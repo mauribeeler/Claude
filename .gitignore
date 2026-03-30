@@ -1,0 +1,12 @@
+# Environment and secrets
+.env
+.xero_tokens.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
