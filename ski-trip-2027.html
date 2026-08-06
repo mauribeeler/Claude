@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ski Trip 2027 — Who Sleeps Where</title>
+<style>
+/* ---------------------------------------------------------------
+   1. Design tokens
+--------------------------------------------------------------- */
+:root{
+  --bg:#f6f7f8;
+  --surface:#ffffff;
+  --surface-2:#f2f4f5;
+  --line:#dfe3e6;
+  --line-strong:#c6ccd1;
+  --text:#1b2227;
+  --text-dim:#5c686f;
+  --text-faint:#7d888f;
+
+  --ok:#15803d;
+  --ok-bg:#e8f4ec;
+  --ok-line:#b8ddc6;
+
+  --pend:#a15c07;
+  --pend-bg:#fdf3e3;
+  --pend-line:#ecd4a8;
+
+  --err:#b3261e;
+  --err-bg:#fceceb;
+  --err-line:#efbfbc;
+
+  --accent:#1f4d5c;
+  --accent-soft:#e6eef1;
+
+  --r-s:8px;
+  --r-m:12px;
+  --r-l:16px;
+  --shadow:0 1px 2px rgba(16,24,32,.06), 0 2px 8px rgba(16,24,32,.05);
+  --shadow-lift:0 4px 16px rgba(16,24,32,.12);
+  --focus:#0b6ea8;
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12161a;
+    --surface:#1a2026;
+    --surface-2:#212930;
+    --line:#2d363e;
+    --line-strong:#3d4750;
+    --text:#e8edf1;
+    --text-dim:#a5b1ba;
+    --text-faint:#8b979f;
+
+    --ok:#6cc48c;
+    --ok-bg:#17281e;
+    --ok-line:#2e5540;
+
+    --pend:#e0ab5f;
+    --pend-bg:#2a2213;
+    --pend-line:#584426;
+
+    --err:#f08d84;
+    --err-bg:#2c1917;
+    --err-line:#5c302c;
+
+    --accent:#8fc4d6;
+    --accent-soft:#1d2a30;
+
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+    --shadow-lift:0 4px 18px rgba(0,0,0,.5);
+    --focus:#6fb6e0;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12161a; --surface:#1a2026; --surface-2:#212930; --line:#2d363e; --line-strong:#3d4750;
+  --text:#e8edf1; --text-dim:#a5b1ba; --text-faint:#8b979f;
+  --ok:#6cc48c; --ok-bg:#17281e; --ok-line:#2e5540;
+  --pend:#e0ab5f; --pend-bg:#2a2213; --pend-line:#584426;
+  --err:#f08d84; --err-bg:#2c1917; --err-line:#5c302c;
+  --accent:#8fc4d6; --accent-soft:#1d2a30;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+  --shadow-lift:0 4px 18px rgba(0,0,0,.5); --focus:#6fb6e0;
+}
+:root[data-theme="light"]{
+  --bg:#f6f7f8; --surface:#ffffff; --surface-2:#f2f4f5; --line:#dfe3e6; --line-strong:#c6ccd1;
+  --text:#1b2227; --text-dim:#5c686f; --text-faint:#7d888f;
+  --ok:#15803d; --ok-bg:#e8f4ec; --ok-line:#b8ddc6;
+  --pend:#a15c07; --pend-bg:#fdf3e3; --pend-line:#ecd4a8;
+  --err:#b3261e; --err-bg:#fceceb; --err-line:#efbfbc;
+  --accent:#1f4d5c; --accent-soft:#e6eef1;
+  --shadow:0 1px 2px rgba(16,24,32,.06), 0 2px 8px rgba(16,24,32,.05);
+  --shadow-lift:0 4px 16px rgba(16,24,32,.12); --focus:#0b6ea8;
+}
+
+/* ---------------------------------------------------------------
+   2. Base
+--------------------------------------------------------------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:400 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3{margin:0;line-height:1.25;letter-spacing:-.01em}
+p{margin:0}
+button{font:inherit;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{
+  outline:2px solid var(--focus);
+  outline-offset:2px;
+  border-radius:6px;
+}
+
+.wrap{max-width:1180px;margin:0 auto;padding:16px 14px 64px}
+@media (min-width:760px){ .wrap{padding:24px 24px 80px} }
+
+.sr-only{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;
+}
+
+/* ---------------------------------------------------------------
+   3. Header + reminder
+--------------------------------------------------------------- */
+.masthead{margin-bottom:16px}
+.eyebrow{
+  font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-faint);margin-bottom:6px;
+}
+.masthead h1{font-size:clamp(23px,6vw,34px);font-weight:650}
+.masthead .sub{color:var(--text-dim);font-size:14px;margin-top:6px}
+
+.reminder{
+  display:flex;gap:10px;align-items:flex-start;
+  margin:14px 0 18px;padding:12px 14px;
+  background:var(--accent-soft);
+  border:1px solid var(--line);
+  border-left:3px solid var(--accent);
+  border-radius:var(--r-m);
+  color:var(--text);
+  font-size:14px;
+}
+.reminder .ico{flex:none;font-size:16px;line-height:1.4}
+
+/* ---------------------------------------------------------------
+   4. Cards / panels
+--------------------------------------------------------------- */
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-l);
+  box-shadow:var(--shadow);
+}
+.card + .card{margin-top:16px}
+.card-head{
+  display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;
+  padding:14px 16px;border-bottom:1px solid var(--line);
+}
+.card-head h2{font-size:16px;font-weight:640}
+.card-body{padding:14px 16px}
+
+/* ---------------------------------------------------------------
+   5. Dashboard
+--------------------------------------------------------------- */
+.stats{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+@media (min-width:520px){ .stats{grid-template-columns:repeat(4,minmax(0,1fr))} }
+@media (min-width:980px){ .stats{grid-template-columns:repeat(8,minmax(0,1fr))} }
+
+.stat{
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  border-radius:var(--r-m);
+  padding:10px 11px;
+  min-width:0;
+}
+.stat .k{
+  font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--text-faint);display:block;margin-bottom:3px;
+  overflow-wrap:anywhere;
+}
+.stat .v{font-size:22px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat.is-ok{background:var(--ok-bg);border-color:var(--ok-line)}
+.stat.is-ok .v{color:var(--ok)}
+.stat.is-pend{background:var(--pend-bg);border-color:var(--pend-line)}
+.stat.is-pend .v{color:var(--pend)}
+.stat.is-err{background:var(--err-bg);border-color:var(--err-line)}
+.stat.is-err .v{color:var(--err)}
+
+.meter{
+  margin-top:12px;height:8px;border-radius:99px;background:var(--surface-2);
+  border:1px solid var(--line);overflow:hidden;
+}
+.meter > span{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .2s ease}
+
+/* ---------------------------------------------------------------
+   6. Buttons + controls
+--------------------------------------------------------------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 13px;min-height:40px;
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  border-radius:10px;
+  font-size:14px;font-weight:550;
+  cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,transform .06s ease;
+}
+.btn:hover{background:var(--surface-2)}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+/* On-accent text flips because --accent itself flips light/dark. */
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){ .btn-primary{color:#0f1417} }
+:root[data-theme="dark"] .btn-primary{color:#0f1417}
+:root[data-theme="light"] .btn-primary{color:#fff}
+.btn-primary:hover{filter:brightness(1.08);background:var(--accent)}
+.btn-sm{padding:5px 10px;min-height:32px;font-size:13px;border-radius:8px}
+.btn-danger{color:var(--err);border-color:var(--err-line)}
+.btn-danger:hover{background:var(--err-bg)}
+.btn-ghost{border-color:transparent;background:transparent}
+.btn-ghost:hover{background:var(--surface-2)}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.toolbar .spacer{flex:1 1 auto}
+
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;font-weight:600;color:var(--text-dim)}
+.input,select.input,textarea.input{
+  width:100%;padding:9px 11px;min-height:40px;
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  border-radius:10px;
+}
+textarea.input{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.45}
+.input::placeholder{color:var(--text-faint)}
+
+/* ---------------------------------------------------------------
+   7. Warnings
+--------------------------------------------------------------- */
+.alerts{display:grid;gap:8px;margin:0 0 16px}
+.alerts:empty{margin:0}
+.alert{
+  display:flex;gap:10px;align-items:flex-start;
+  padding:11px 13px;border-radius:var(--r-m);font-size:14px;
+  border:1px solid;
+}
+.alert .ico{flex:none;font-weight:700}
+.alert-err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
+.alert-warn{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
+.alert-ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.alert strong{font-weight:650}
+
+/* ---------------------------------------------------------------
+   8. Layout
+--------------------------------------------------------------- */
+.columns{display:grid;gap:16px;margin-top:16px}
+@media (min-width:980px){
+  .columns{grid-template-columns:minmax(0,7fr) minmax(0,8fr);align-items:start}
+}
+
+/* ---------------------------------------------------------------
+   9. People panel
+--------------------------------------------------------------- */
+.people-controls{display:grid;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{
+  padding:6px 11px;min-height:34px;
+  border:1px solid var(--line);border-radius:99px;
+  background:var(--surface-2);
+  font-size:13px;font-weight:550;color:var(--text-dim);
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+}
+.tab:hover{border-color:var(--line-strong)}
+.tab[aria-selected="true"]{
+  background:var(--accent);border-color:var(--accent);color:#fff;
+}
+@media (prefers-color-scheme: dark){ .tab[aria-selected="true"]{color:#0f1417} }
+:root[data-theme="dark"] .tab[aria-selected="true"]{color:#0f1417}
+:root[data-theme="light"] .tab[aria-selected="true"]{color:#fff}
+.tab .n{font-variant-numeric:tabular-nums;opacity:.8;font-size:12px}
+
+.add-person{display:flex;gap:8px}
+.add-person .input{flex:1 1 auto}
+
+.people-list{list-style:none;margin:0;padding:0}
+.person{
+  padding:12px 16px;
+  border-bottom:1px solid var(--line);
+  display:grid;gap:8px;
+}
+.person:last-child{border-bottom:0}
+.person.flag{background:var(--pend-bg)}
+.person-top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.person-id{flex:1 1 150px;min-width:0}
+.person-name{font-size:15.5px;font-weight:620;overflow-wrap:anywhere}
+.person-where{font-size:13px;color:var(--text-dim);margin-top:2px;overflow-wrap:anywhere}
+.person-where.none{color:var(--pend)}
+
+.pill{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:99px;
+  font-size:12px;font-weight:600;border:1px solid;
+  white-space:nowrap;
+}
+.pill-ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.pill-pend{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
+.pill-err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
+.pill-neutral{background:var(--surface-2);border-color:var(--line);color:var(--text-dim)}
+
+.toggle{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 11px;min-height:34px;
+  border:1px solid var(--line-strong);border-radius:99px;
+  background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;
+  white-space:nowrap;
+}
+.toggle .dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--pend);flex:none;
+}
+.toggle[aria-pressed="true"]{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.toggle[aria-pressed="true"] .dot{background:var(--ok)}
+
+.person-actions{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.person-actions .pair-row{margin-left:auto}
+.person-note{width:100%}
+.note-input{
+  width:100%;padding:7px 10px;min-height:36px;font-size:13.5px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+}
+.pair-row{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-faint)}
+.pair-row select{
+  padding:5px 8px;min-height:32px;font-size:13px;color:var(--text-dim);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  max-width:150px;
+}
+.empty{padding:26px 16px;text-align:center;color:var(--text-faint);font-size:14px}
+
+/* ---------------------------------------------------------------
+   10. Room cards
+--------------------------------------------------------------- */
+.rooms{display:grid;gap:16px}
+.room{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-l);box-shadow:var(--shadow);overflow:hidden;
+}
+.room.invalid{border-color:var(--err-line);box-shadow:0 0 0 1px var(--err-line)}
+.room-head{padding:13px 15px;border-bottom:1px solid var(--line);display:grid;gap:9px}
+.room-title-row{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+.room-title{font-size:16px;font-weight:640}
+.room-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.room-mode{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.room-mode label{font-size:12px;font-weight:600;color:var(--text-dim)}
+.room-mode select{
+  padding:6px 9px;min-height:36px;font-size:13.5px;
+  background:var(--surface-2);border:1px solid var(--line-strong);border-radius:9px;
+}
+.room-warn{
+  margin:0 15px 12px;padding:9px 11px;border-radius:10px;font-size:13px;
+  background:var(--err-bg);border:1px solid var(--err-line);color:var(--err);
+}
+
+.slots{list-style:none;margin:0;padding:12px 15px 15px;display:grid;gap:9px}
+.slot{
+  border:1px solid var(--line);border-radius:var(--r-m);
+  background:var(--surface-2);padding:10px 11px;
+  display:grid;gap:8px;
+}
+.slot.filled{background:var(--surface);border-color:var(--line-strong)}
+.slot.over{border-color:var(--err-line);background:var(--err-bg)}
+.slot-top{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.slot-label{font-size:12.5px;font-weight:650;color:var(--text-dim);letter-spacing:.02em}
+.slot-label .kind{font-weight:500;color:var(--text-faint)}
+.occupants{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 5px 4px 11px;border-radius:99px;
+  background:var(--accent-soft);border:1px solid var(--line);
+  font-size:13.5px;font-weight:560;max-width:100%;
+}
+.chip.unconf{background:var(--pend-bg);border-color:var(--pend-line)}
+.chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .x{
+  width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:0;background:transparent;border-radius:50%;cursor:pointer;
+  color:var(--text-dim);font-size:15px;line-height:1;
+}
+.chip .x:hover{background:var(--err-bg);color:var(--err)}
+.slot-empty{font-size:13.5px;color:var(--text-faint);font-style:italic}
+
+/* ---------------------------------------------------------------
+   11. Help
+--------------------------------------------------------------- */
+details.help{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);
+  box-shadow:var(--shadow);margin-top:16px;
+}
+details.help > summary{
+  padding:13px 16px;cursor:pointer;font-size:15px;font-weight:620;
+  list-style:none;display:flex;align-items:center;gap:8px;
+}
+details.help > summary::-webkit-details-marker{display:none}
+details.help > summary::after{content:"▾";margin-left:auto;color:var(--text-faint);font-size:12px}
+details.help[open] > summary::after{content:"▴"}
+details.help ol{margin:0;padding:0 16px 16px 34px;display:grid;gap:7px;font-size:14px;color:var(--text-dim)}
+details.help ol strong{color:var(--text)}
+
+/* ---------------------------------------------------------------
+   12. Modal
+--------------------------------------------------------------- */
+.backdrop{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(12,18,22,.5);
+  display:flex;align-items:flex-end;justify-content:center;
+  padding:0;
+}
+@media (min-width:640px){ .backdrop{align-items:center;padding:24px} }
+.backdrop[hidden]{display:none}
+.modal{
+  background:var(--surface);
+  width:100%;max-width:560px;max-height:88vh;
+  border-radius:var(--r-l) var(--r-l) 0 0;
+  box-shadow:var(--shadow-lift);
+  display:flex;flex-direction:column;overflow:hidden;
+  border:1px solid var(--line);
+}
+@media (min-width:640px){ .modal{border-radius:var(--r-l)} }
+.modal-head{
+  padding:14px 16px;border-bottom:1px solid var(--line);
+  display:flex;gap:12px;align-items:center;justify-content:space-between;
+}
+.modal-head h2{font-size:16.5px;font-weight:640}
+.modal-body{padding:14px 16px;overflow:auto;display:grid;gap:12px}
+.modal-foot{
+  padding:12px 16px;border-top:1px solid var(--line);
+  display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;
+  background:var(--surface);
+}
+.close-x{
+  width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface-2);cursor:pointer;font-size:17px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+}
+.pick-group{display:grid;gap:6px}
+.pick-group h3{
+  font-size:12px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--text-faint);margin-top:4px;
+}
+.pick{
+  width:100%;text-align:left;display:flex;gap:10px;align-items:center;justify-content:space-between;
+  padding:11px 12px;min-height:48px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-m);
+  cursor:pointer;font-size:14.5px;
+}
+.pick:hover:not([disabled]){border-color:var(--accent);background:var(--accent-soft)}
+.pick[disabled]{opacity:.5;cursor:not-allowed}
+.pick .meta{font-size:12.5px;color:var(--text-dim);white-space:nowrap}
+.pick .lead{display:flex;gap:8px;align-items:center;min-width:0}
+.pick .lead .nm{font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal-note{font-size:13px;color:var(--text-dim)}
+.file-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type="file"]{font-size:13px;max-width:100%}
+
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+  z-index:80;padding:10px 16px;border-radius:99px;
+  background:var(--text);color:var(--bg);
+  font-size:13.5px;font-weight:560;box-shadow:var(--shadow-lift);
+  max-width:90vw;text-align:center;
+}
+.toast[hidden]{display:none}
+
+/* ---------------------------------------------------------------
+   13. Print
+--------------------------------------------------------------- */
+.print-only{display:none}
+@media print{
+  :root{
+    --bg:#fff;--surface:#fff;--surface-2:#fff;--line:#bbb;--line-strong:#999;
+    --text:#000;--text-dim:#333;--text-faint:#555;
+    --ok:#116633;--pend:#8a5200;--err:#a11;--accent:#123;--accent-soft:#fff;
+    --shadow:none;--shadow-lift:none;
+  }
+  body{background:#fff;color:#000;font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  .toolbar,.people-controls,.person-actions,.pair-row,.room-mode,
+  .chip .x,.backdrop,.toast,details.help,.meter,.close-x,
+  .btn,.tabs,.add-person,.no-print{display:none !important}
+  .card,.room,.stat{border:1px solid #bbb;box-shadow:none;break-inside:avoid}
+  .card-head{border-bottom:1px solid #bbb}
+  .columns{display:block}
+  .card + .card,.rooms > .room{margin-top:10px}
+  .columns > *{margin-top:10px}
+  .rooms{display:block}
+  .print-only{display:block}
+  .person{break-inside:avoid;padding:6px 10px}
+  .note-input{border:0;background:transparent;padding:0;min-height:0;font-style:italic;color:#333}
+  /* an empty note would otherwise print its placeholder as if it were content */
+  .note-input:placeholder-shown{display:none}
+  .reminder{background:#fff;border:1px solid #999;border-left:3px solid #333}
+  .slots{padding:8px 10px}
+  .slot{break-inside:avoid;padding:6px 8px}
+  a[href]::after{content:""}
+  .stats{grid-template-columns:repeat(4,1fr)}
+  .print-title{font-size:16pt;font-weight:700;margin-bottom:2mm}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Zermatt · Switzerland</p>
+    <h1>Ski Trip 2027 — Who Sleeps Where</h1>
+    <p class="sub">Track confirmations, assign beds, spot problems before they become arguments at 11pm.</p>
+  </header>
+
+  <aside class="reminder">
+    <span class="ico" aria-hidden="true">🎧</span>
+    <p>Reminder: buy nice noise-cancelling headphones — some rooms can be loud if I’m on it.</p>
+  </aside>
+
+  <section class="card" aria-labelledby="dash-h">
+    <div class="card-head"><h2 id="dash-h">Dashboard</h2>
+      <span class="pill pill-neutral" id="capacity-pill">14 beds</span>
+    </div>
+    <div class="card-body">
+      <div class="stats" id="stats" role="group" aria-label="Trip statistics"></div>
+      <div class="meter" role="img" aria-label="Occupancy" id="meter-wrap"><span id="meter" style="width:0%"></span></div>
+    </div>
+  </section>
+
+  <div class="toolbar no-print">
+    <button class="btn btn-primary" type="button" id="btn-suggest">✨ Suggested Allocation</button>
+    <button class="btn" type="button" id="btn-export">Export JSON</button>
+    <button class="btn" type="button" id="btn-import">Import JSON</button>
+    <span class="spacer"></span>
+    <button class="btn" type="button" id="btn-print">Print / PDF</button>
+    <button class="btn btn-danger" type="button" id="btn-reset-alloc">Reset allocations</button>
+    <button class="btn btn-danger" type="button" id="btn-reset-all">Reset all</button>
+  </div>
+
+  <div class="alerts" id="alerts" role="status" aria-live="polite"></div>
+
+  <div class="columns">
+
+    <section class="card" aria-labelledby="people-h">
+      <div class="card-head">
+        <h2 id="people-h">People</h2>
+        <span class="pill pill-neutral" id="people-count">0</span>
+      </div>
+
+      <div class="people-controls no-print">
+        <div class="field">
+          <label for="search">Search people</label>
+          <input class="input" id="search" type="search" placeholder="Type a name…" autocomplete="off">
+        </div>
+        <div class="tabs" role="tablist" aria-label="Filter people" id="tabs"></div>
+        <div class="field">
+          <label for="new-person">Add someone new</label>
+          <div class="add-person">
+            <input class="input" id="new-person" type="text" placeholder="Name" autocomplete="off" maxlength="40">
+            <button class="btn" type="button" id="btn-add-person">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <ul class="people-list" id="people-list"></ul>
+    </section>
+
+    <section aria-labelledby="rooms-h">
+      <h2 id="rooms-h" class="sr-only">Rooms</h2>
+      <div class="rooms" id="rooms"></div>
+    </section>
+
+  </div>
+
+  <details class="help no-print">
+    <summary>How to use this ⓘ</summary>
+    <ol>
+      <li><strong>Confirm people first.</strong> Tap the status button on each person until the people you actually trust to turn up are green.</li>
+      <li><strong>Assign rooms second.</strong> Use <em>Assign</em> on a person, or tap a bed slot to fill it. Set double rooms to <em>Couple</em> where two people are sharing a bed.</li>
+      <li><strong>Check warnings before finalising.</strong> Red = a real problem (over capacity, someone in two beds). Amber = confirmed people still without a bed.</li>
+      <li><strong>Export the final plan to share.</strong> Export JSON keeps the full plan; Print / PDF gives you a clean one-pager for the group chat.</li>
+    </ol>
+  </details>
+
+</div>
+
+<div class="backdrop" id="backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Title</h2>
+      <button class="close-x" type="button" id="modal-close" aria-label="Close dialog">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+(function () {
+
+/* ===============================================================
+   1. INITIAL STATE
+   =============================================================== */
+
+var SCHEMA_VERSION = 1;
+
+var STARTING_PEOPLE = [
+  "Amelia","Charles","Courtney","Graham","Hannah","Henry","JJ","Joel",
+  "John","Mantas","Nick","Tim","Toby","Tom","Huxley"
+];
+
+var ROOM_BLUEPRINT = [
+  { id: "double1", name: "Double Room 1", type: "double", mode: "twin" },
+  { id: "double2", name: "Double Room 2", type: "double", mode: "twin" },
+  { id: "family",  name: "Family Room",   type: "family", mode: "fourSingles" },
+  { id: "dorm",    name: "Dormitory",     type: "dorm",   mode: "standard" }
+];
+
+var ROOM_CAPACITY = { double: 2, family: 4, dorm: 6 };
+
+var ROOM_MODES = {
+  double: [
+    { value: "twin",   label: "Twin — 2 single beds" },
+    { value: "couple", label: "Couple — 1 double bed" }
+  ],
+  family: [
+    { value: "fourSingles",          label: "4 single beds" },
+    { value: "doublePlusTwoSingles", label: "Double bed + 2 singles" }
+  ],
+  dorm: []
+};
+
+var seq = 0;
+function uid(prefix) {
+  seq += 1;
+  return prefix + "_" + Date.now().toString(36) + "_" + seq.toString(36);
+}
+
+function makePerson(name) {
+  return { id: uid("p"), name: name, confirmed: false, note: "", pairWith: null, assignment: null };
+}
+
+function initialState() {
+  return {
+    version: SCHEMA_VERSION,
+    tripName: "Ski Trip 2027 — Zermatt",
+    people: STARTING_PEOPLE.map(makePerson),
+    rooms: ROOM_BLUEPRINT.map(function (b) {
+      return { id: b.id, name: b.name, type: b.type, mode: b.mode, slots: createSlotsForRoom(b.type, b.mode) };
+    })
+  };
+}
+
+var state = null;
+
+/* View-only state — never exported. */
+var ui = { filter: "all", search: "" };
+
+/* ===============================================================
+   2. SLOT GENERATION HELPERS
+   =============================================================== */
+
+function makeSlot(type, label) {
+  return {
+    id: uid("s"),
+    type: type,                                   // "single" | "sharedDouble"
+    capacity: type === "sharedDouble" ? 2 : 1,
+    label: label,
+    occupants: []
+  };
+}
+
+function createSlotsForRoom(roomType, mode) {
+  if (roomType === "double") {
+    if (mode === "couple") return [makeSlot("sharedDouble", "Double bed")];
+    return [makeSlot("single", "Single bed 1"), makeSlot("single", "Single bed 2")];
+  }
+  if (roomType === "family") {
+    if (mode === "doublePlusTwoSingles") {
+      return [makeSlot("sharedDouble", "Double bed"), makeSlot("single", "Single bed 1"), makeSlot("single", "Single bed 2")];
+    }
+    return [1, 2, 3, 4].map(function (i) { return makeSlot("single", "Single bed " + i); });
+  }
+  // dorm
+  return [1, 2, 3, 4, 5, 6].map(function (i) { return makeSlot("single", "Bunk " + i); });
+}
+
+function defaultModeFor(roomType) {
+  if (roomType === "double") return "twin";
+  if (roomType === "family") return "fourSingles";
+  return "standard";
+}
+
+function validModesFor(roomType) {
+  var list = ROOM_MODES[roomType] || [];
+  if (!list.length) return ["standard"];
+  return list.map(function (m) { return m.value; });
+}
+
+function roomCapacity(room) {
+  return ROOM_CAPACITY[room.type] || room.slots.reduce(function (n, s) { return n + s.capacity; }, 0);
+}
+
+function totalBeds() {
+  return state.rooms.reduce(function (n, r) { return n + roomCapacity(r); }, 0);
+}
+
+/* ===============================================================
+   3. LOOKUPS + DERIVED STATS HELPERS
+   =============================================================== */
+
+function personById(id) {
+  for (var i = 0; i < state.people.length; i++) if (state.people[i].id === id) return state.people[i];
+  return null;
+}
+function roomById(id) {
+  for (var i = 0; i < state.rooms.length; i++) if (state.rooms[i].id === id) return state.rooms[i];
+  return null;
+}
+function slotById(room, slotId) {
+  for (var i = 0; i < room.slots.length; i++) if (room.slots[i].id === slotId) return room.slots[i];
+  return null;
+}
+function roomOccupancy(room) {
+  return room.slots.reduce(function (n, s) { return n + s.occupants.length; }, 0);
+}
+
+/* slots are the source of truth; person.assignment mirrors them */
+function syncAssignments() {
+  var seen = Object.create(null);
+  state.people.forEach(function (p) { p.assignment = null; });
+
+  state.rooms.forEach(function (room) {
+    room.slots.forEach(function (slot) {
+      var kept = [];
+      slot.occupants.forEach(function (pid) {
+        var person = personById(pid);
+        if (!person) return;                 // drop unknown ids
+        if (seen[pid]) return;               // drop duplicate placements
+        seen[pid] = true;
+        kept.push(pid);
+        person.assignment = { roomId: room.id, slotId: slot.id };
+      });
+      slot.occupants = kept;
+    });
+  });
+
+  // pairs must be mutual and must exist
+  state.people.forEach(function (p) {
+    if (!p.pairWith) return;
+    var other = personById(p.pairWith);
+    if (!other || other.id === p.id || other.pairWith !== p.id) p.pairWith = null;
+  });
+}
+
+function assignmentLabel(person) {
+  if (!person.assignment) return null;
+  var room = roomById(person.assignment.roomId);
+  if (!room) return null;
+  var slot = slotById(room, person.assignment.slotId);
+  if (!slot) return null;
+  var mates = slot.occupants
+    .filter(function (id) { return id !== person.id; })
+    .map(function (id) { var m = personById(id); return m ? m.name : "?"; });
+  var txt = room.name + " · " + slot.label;
+  if (mates.length) txt += " (with " + mates.join(", ") + ")";
+  return txt;
+}
+
+function getStats(s) {
+  var people = s.people;
+  var total = people.length;
+  var confirmed = 0, assigned = 0, confirmedUnassigned = 0;
+
+  people.forEach(function (p) {
+    if (p.confirmed) confirmed += 1;
+    if (p.assignment) assigned += 1;
+    else if (p.confirmed) confirmedUnassigned += 1;
+  });
+
+  var beds = s.rooms.reduce(function (n, r) { return n + (ROOM_CAPACITY[r.type] || 0); }, 0);
+  var occupied = s.rooms.reduce(function (n, r) { return n + roomOccupancy(r); }, 0);
+
+  return {
+    total: total,
+    confirmed: confirmed,
+    notConfirmed: total - confirmed,
+    assigned: assigned,
+    unassigned: total - assigned,
+    beds: beds,
+    occupied: occupied,
+    spacesRemaining: Math.max(0, beds - occupied),
+    confirmedUnassigned: confirmedUnassigned,
+    occupancyPct: beds > 0 ? Math.round((occupied / beds) * 100) : 0,
+    overCapacityBy: Math.max(0, total - beds)
+  };
+}
+
+/* ===============================================================
+   4. VALIDATION HELPERS
+   =============================================================== */
+
+function validateState(s) {
+  var issues = [];
+  var placements = Object.create(null);
+
+  s.rooms.forEach(function (room) {
+    var cap = ROOM_CAPACITY[room.type] || 0;
+    var occ = roomOccupancy(room);
+
+    if (validModesFor(room.type).indexOf(room.mode) === -1) {
+      issues.push({ level: "error", roomId: room.id, text: room.name + " has an unrecognised layout (" + room.mode + ")." });
+    }
+    if (occ > cap) {
+      issues.push({ level: "error", roomId: room.id, text: room.name + " holds " + occ + " people but only sleeps " + cap + ". Move " + (occ - cap) + " out." });
+    }
+
+    room.slots.forEach(function (slot) {
+      if (slot.occupants.length > slot.capacity) {
+        issues.push({
+          level: "error", roomId: room.id, slotId: slot.id,
+          text: room.name + " · " + slot.label + " has " + slot.occupants.length + " people in a " + slot.capacity + "-person bed."
+        });
+      }
+      slot.occupants.forEach(function (pid) {
+        if (!personById(pid)) {
+          issues.push({ level: "error", roomId: room.id, text: room.name + " · " + slot.label + " refers to someone who is no longer on the trip." });
+          return;
+        }
+        placements[pid] = (placements[pid] || 0) + 1;
+      });
+    });
+  });
+
+  Object.keys(placements).forEach(function (pid) {
+    if (placements[pid] > 1) {
+      var p = personById(pid);
+      issues.push({ level: "error", text: (p ? p.name : "Someone") + " is in " + placements[pid] + " beds at once." });
+    }
+  });
+
+  var stats = getStats(s);
+
+  if (stats.overCapacityBy > 0) {
+    issues.push({
+      level: "error",
+      text: stats.total + " people on the list but only " + stats.beds + " beds — " + stats.overCapacityBy +
+            " will have nowhere to sleep. Add accommodation or trim the list."
+    });
+  }
+
+  if (stats.confirmedUnassigned > 0) {
+    var names = s.people.filter(function (p) { return p.confirmed && !p.assignment; }).map(function (p) { return p.name; });
+    issues.push({
+      level: "warn",
+      text: stats.confirmedUnassigned + " confirmed " + (stats.confirmedUnassigned === 1 ? "person has" : "people have") +
+            " no bed: " + names.join(", ") + "."
+    });
+  }
+
+  return issues;
+}
+
+/* ===============================================================
+   5. MUTATIONS
+   =============================================================== */
+
+function removeAssignment(personId) {
+  state.rooms.forEach(function (room) {
+    room.slots.forEach(function (slot) {
+      var i = slot.occupants.indexOf(personId);
+      while (i !== -1) { slot.occupants.splice(i, 1); i = slot.occupants.indexOf(personId); }
+    });
+  });
+  var p = personById(personId);
+  if (p) p.assignment = null;
+}
+
+function assignPerson(personId, roomId, slotId) {
+  var person = personById(personId);
+  var room = roomById(roomId);
+  if (!person || !room) return { ok: false, message: "That person or room no longer exists." };
+  var slot = slotById(room, slotId);
+  if (!slot) return { ok: false, message: "That bed no longer exists." };
+
+  var already = slot.occupants.indexOf(personId) !== -1;
+  if (already) return { ok: true, message: person.name + " is already there." };
+
+  if (slot.occupants.length >= slot.capacity) {
+    return { ok: false, message: slot.label + " is full (max " + slot.capacity + ")." };
+  }
+  if (roomOccupancy(room) >= roomCapacity(room)) {
+    return { ok: false, message: room.name + " is already full." };
+  }
+
+  removeAssignment(personId);
+  slot.occupants.push(personId);
+  person.assignment = { roomId: room.id, slotId: slot.id };
+  return { ok: true, message: person.name + " → " + room.name + " · " + slot.label };
+}
+
+/*
+  Mode change preserves occupants: existing shared-double couples are kept
+  together where a shared double exists, everyone else is re-seated in order.
+  Anyone who genuinely cannot be re-seated is parked in the last slot so the
+  data survives visibly (and trips the over-capacity warning) rather than
+  being silently dropped.
+*/
+function changeRoomMode(roomId, mode) {
+  var room = roomById(roomId);
+  if (!room) return { ok: false, message: "Room not found." };
+  if (validModesFor(room.type).indexOf(mode) === -1) return { ok: false, message: "Unsupported layout." };
+  if (room.mode === mode) return { ok: true, message: "" };
+
+  var groups = room.slots
+    .filter(function (s) { return s.occupants.length > 0; })
+    .map(function (s) { return { shared: s.type === "sharedDouble" && s.occupants.length > 1, ids: s.occupants.slice() }; });
+
+  var newSlots = createSlotsForRoom(room.type, mode);
+
+  var sharedTargets = newSlots.filter(function (s) { return s.type === "sharedDouble"; });
+  var leftovers = [];
+
+  // 1. keep couples together in shared doubles
+  groups.forEach(function (g) {
+    if (!g.shared) { leftovers = leftovers.concat(g.ids); return; }
+    var target = null;
+    for (var i = 0; i < sharedTargets.length; i++) {
+      if (sharedTargets[i].occupants.length === 0) { target = sharedTargets[i]; break; }
+    }
+    if (target) target.occupants = g.ids.slice(0, target.capacity).concat();
+    else leftovers = leftovers.concat(g.ids);
+    if (target && g.ids.length > target.capacity) leftovers = leftovers.concat(g.ids.slice(target.capacity));
+  });
+
+  // 2. seat everyone else in the first bed with room
+  var unseated = [];
+  leftovers.forEach(function (pid) {
+    var placed = false;
+    for (var i = 0; i < newSlots.length; i++) {
+      if (newSlots[i].occupants.length < newSlots[i].capacity) { newSlots[i].occupants.push(pid); placed = true; break; }
+    }
+    if (!placed) unseated.push(pid);
+  });
+
+  // 3. never lose data — park the remainder visibly
+  if (unseated.length && newSlots.length) {
+    newSlots[newSlots.length - 1].occupants = newSlots[newSlots.length - 1].occupants.concat(unseated);
+  }
+
+  room.mode = mode;
+  room.slots = newSlots;
+  syncAssignments();
+
+  if (unseated.length) {
+    var names = unseated.map(function (id) { var p = personById(id); return p ? p.name : "?"; }).join(", ");
+    return { ok: true, warning: true, message: "Layout changed, but " + names + " no longer fit — resolve the highlighted bed." };
+  }
+  return { ok: true, message: "Layout changed. Assignments kept." };
+}
+
+/* ===============================================================
+   6. SUGGESTED ALLOCATION
+   =============================================================== */
+
+function suggestAllocation() {
+  // reset rooms to default layouts and empty beds
+  state.rooms.forEach(function (room) {
+    var blueprint = null;
+    ROOM_BLUEPRINT.forEach(function (b) { if (b.id === room.id) blueprint = b; });
+    room.mode = blueprint ? blueprint.mode : defaultModeFor(room.type);
+    room.slots = createSlotsForRoom(room.type, room.mode);
+  });
+  state.people.forEach(function (p) { p.assignment = null; });
+
+  // priority order: confirmed first, then the rest, list order within each
+  var confirmed = state.people.filter(function (p) { return p.confirmed; });
+  var pending = state.people.filter(function (p) { return !p.confirmed; });
+  var queue = confirmed.concat(pending);
+
+  // pull out mutual pairs, keeping the higher-priority partner's position
+  var taken = Object.create(null);
+  var pairs = [];
+  var singles = [];
+
+  queue.forEach(function (p) {
+    if (taken[p.id]) return;
+    if (p.pairWith) {
+      var other = personById(p.pairWith);
+      if (other && !taken[other.id] && other.pairWith === p.id) {
+        taken[p.id] = true; taken[other.id] = true;
+        pairs.push([p, other]);
+        return;
+      }
+    }
+    taken[p.id] = true;
+    singles.push(p);
+  });
+
+  var doubles = state.rooms.filter(function (r) { return r.type === "double"; });
+  var family = state.rooms.filter(function (r) { return r.type === "family"; })[0];
+  var dorms = state.rooms.filter(function (r) { return r.type === "dorm"; });
+
+  var usedDoubleRooms = Object.create(null);
+
+  // 1. pairs into the double rooms, in couple mode
+  var pairIdx = 0;
+  for (var d = 0; d < doubles.length && pairIdx < pairs.length; d++) {
+    var room = doubles[d];
+    room.mode = "couple";
+    room.slots = createSlotsForRoom(room.type, "couple");
+    var pr = pairs[pairIdx++];
+    room.slots[0].occupants = [pr[0].id, pr[1].id];
+    usedDoubleRooms[room.id] = true;
+  }
+
+  // 2. one more pair can take the family room's double bed
+  if (pairIdx < pairs.length && family) {
+    family.mode = "doublePlusTwoSingles";
+    family.slots = createSlotsForRoom(family.type, "doublePlusTwoSingles");
+    var pr2 = pairs[pairIdx++];
+    family.slots[0].occupants = [pr2[0].id, pr2[1].id];
+  }
+
+  // any pair we cannot seat as a couple is treated as two individuals
+  while (pairIdx < pairs.length) {
+    singles.push(pairs[pairIdx][0]);
+    singles.push(pairs[pairIdx][1]);
+    pairIdx += 1;
+  }
+
+  // 3. individuals: remaining double rooms → family → dorm
+  var fillOrder = doubles.filter(function (r) { return !usedDoubleRooms[r.id]; })
+    .concat(family ? [family] : [])
+    .concat(dorms);
+
+  var qi = 0;
+  fillOrder.forEach(function (room) {
+    room.slots.forEach(function (slot) {
+      // in suggested mode, never put strangers in the same bed
+      var seatsHere = slot.type === "sharedDouble" ? 0 : slot.capacity;
+      while (seatsHere > 0 && slot.occupants.length < slot.capacity && qi < singles.length) {
+        if (roomOccupancy(room) >= roomCapacity(room)) break;
+        slot.occupants.push(singles[qi].id);
+        qi += 1;
+        seatsHere -= 1;
+      }
+    });
+  });
+
+  syncAssignments();
+
+  var leftOut = singles.length - qi;
+  return {
+    seated: state.people.filter(function (p) { return p.assignment; }).length,
+    leftOut: leftOut
+  };
+}
+
+/* ===============================================================
+   7. IMPORT / EXPORT UTILITIES
+   =============================================================== */
+
+function exportPlan() {
+  return JSON.parse(JSON.stringify({
+    version: SCHEMA_VERSION,
+    tripName: state.tripName,
+    exportedAt: new Date().toISOString(),
+    people: state.people,
+    rooms: state.rooms
+  }));
+}
+
+function importPlan(data) {
+  if (!data || typeof data !== "object") throw new Error("That isn't a plan object.");
+  if (!Array.isArray(data.people)) throw new Error("Missing a 'people' array.");
+  if (!Array.isArray(data.rooms)) throw new Error("Missing a 'rooms' array.");
+
+  var usedIds = Object.create(null);
+
+  var people = data.people.map(function (raw, i) {
+    if (!raw || typeof raw !== "object") throw new Error("Person #" + (i + 1) + " is not an object.");
+    var name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) throw new Error("Person #" + (i + 1) + " has no name.");
+    var id = typeof raw.id === "string" && raw.id && !usedIds[raw.id] ? raw.id : uid("p");
+    usedIds[id] = true;
+    return {
+      id: id,
+      name: name.slice(0, 60),
+      confirmed: raw.confirmed === true,
+      note: typeof raw.note === "string" ? raw.note.slice(0, 300) : "",
+      pairWith: typeof raw.pairWith === "string" ? raw.pairWith : null,
+      assignment: null
+    };
+  });
+
+  var rooms = data.rooms.map(function (raw, i) {
+    if (!raw || typeof raw !== "object") throw new Error("Room #" + (i + 1) + " is not an object.");
+    var type = raw.type;
+    if (!ROOM_CAPACITY[type]) throw new Error("Room #" + (i + 1) + " has unknown type '" + type + "'.");
+    var mode = validModesFor(type).indexOf(raw.mode) !== -1 ? raw.mode : defaultModeFor(type);
+
+    var slots;
+    if (Array.isArray(raw.slots) && raw.slots.length) {
+      slots = raw.slots.map(function (rs, j) {
+        var stype = rs && rs.type === "sharedDouble" ? "sharedDouble" : "single";
+        var slot = makeSlot(stype, rs && typeof rs.label === "string" && rs.label ? rs.label : (stype === "sharedDouble" ? "Double bed" : "Bed " + (j + 1)));
+        if (rs && typeof rs.id === "string" && rs.id) slot.id = rs.id;
+        slot.occupants = Array.isArray(rs && rs.occupants) ? rs.occupants.filter(function (x) { return typeof x === "string"; }) : [];
+        return slot;
+      });
+    } else {
+      slots = createSlotsForRoom(type, mode);
+    }
+
+    return {
+      id: typeof raw.id === "string" && raw.id ? raw.id : uid("r"),
+      name: typeof raw.name === "string" && raw.name ? raw.name.slice(0, 60) : "Room " + (i + 1),
+      type: type,
+      mode: mode,
+      slots: slots
+    };
+  });
+
+  if (!rooms.length) throw new Error("A plan needs at least one room.");
+
+  state = {
+    version: SCHEMA_VERSION,
+    tripName: typeof data.tripName === "string" && data.tripName ? data.tripName : "Ski Trip 2027 — Zermatt",
+    people: people,
+    rooms: rooms
+  };
+  syncAssignments();
+}
+
+function download(filename, text) {
+  try {
+    var blob = new Blob([text], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* ===============================================================
+   8. RENDER FUNCTIONS
+   =============================================================== */
+
+var el = {
+  stats: document.getElementById("stats"),
+  meter: document.getElementById("meter"),
+  meterWrap: document.getElementById("meter-wrap"),
+  capacityPill: document.getElementById("capacity-pill"),
+  alerts: document.getElementById("alerts"),
+  tabs: document.getElementById("tabs"),
+  peopleList: document.getElementById("people-list"),
+  peopleCount: document.getElementById("people-count"),
+  rooms: document.getElementById("rooms"),
+  search: document.getElementById("search"),
+  newPerson: document.getElementById("new-person"),
+  backdrop: document.getElementById("backdrop"),
+  modal: document.getElementById("modal"),
+  modalTitle: document.getElementById("modal-title"),
+  modalBody: document.getElementById("modal-body"),
+  modalFoot: document.getElementById("modal-foot"),
+  modalClose: document.getElementById("modal-close"),
+  toast: document.getElementById("toast")
+};
+
+function esc(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+var FILTERS = [
+  { key: "all",          label: "All" },
+  { key: "confirmed",    label: "Confirmed" },
+  { key: "notConfirmed", label: "Not confirmed" },
+  { key: "assigned",     label: "Assigned" },
+  { key: "unassigned",   label: "Unassigned" }
+];
+
+function matchesFilter(p, key) {
+  if (key === "confirmed") return p.confirmed;
+  if (key === "notConfirmed") return !p.confirmed;
+  if (key === "assigned") return !!p.assignment;
+  if (key === "unassigned") return !p.assignment;
+  return true;
+}
+
+function visiblePeople() {
+  var q = ui.search.trim().toLowerCase();
+  return state.people.filter(function (p) {
+    if (!matchesFilter(p, ui.filter)) return false;
+    if (!q) return true;
+    return p.name.toLowerCase().indexOf(q) !== -1 || (p.note || "").toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function renderStats(stats) {
+  var cells = [
+    { k: "Total people",  v: stats.total,               cls: "" },
+    { k: "Confirmed",     v: stats.confirmed,           cls: stats.confirmed ? "is-ok" : "" },
+    { k: "Not confirmed", v: stats.notConfirmed,        cls: stats.notConfirmed ? "is-pend" : "" },
+    { k: "Assigned",      v: stats.assigned,            cls: "" },
+    { k: "Unassigned",    v: stats.unassigned,          cls: stats.unassigned ? "is-pend" : "" },
+    { k: "Spaces left",   v: stats.spacesRemaining,     cls: stats.spacesRemaining === 0 ? "is-pend" : "" },
+    { k: "Confirmed, no bed", v: stats.confirmedUnassigned, cls: stats.confirmedUnassigned ? "is-err" : "is-ok" },
+    { k: "Occupancy",     v: stats.occupancyPct + "%",  cls: "" }
+  ];
+  el.stats.innerHTML = cells.map(function (c) {
+    return '<div class="stat ' + c.cls + '"><span class="k">' + esc(c.k) + '</span><span class="v">' + esc(c.v) + "</span></div>";
+  }).join("");
+
+  el.meter.style.width = Math.min(100, stats.occupancyPct) + "%";
+  el.meter.style.background = stats.occupancyPct >= 100 ? "var(--ok)" : (stats.occupancyPct > 0 ? "var(--accent)" : "transparent");
+  el.meterWrap.setAttribute("aria-label", "Occupancy " + stats.occupancyPct + " percent — " + stats.occupied + " of " + stats.beds + " beds filled");
+  el.capacityPill.textContent = stats.occupied + " / " + stats.beds + " beds filled";
+}
+
+function renderAlerts(issues) {
+  if (!issues.length) {
+    el.alerts.innerHTML = '<div class="alert alert-ok"><span class="ico" aria-hidden="true">✓</span><p>No problems. Everyone confirmed has a bed and no room is over capacity.</p></div>';
+    return;
+  }
+  var errs = issues.filter(function (i) { return i.level === "error"; });
+  var warns = issues.filter(function (i) { return i.level !== "error"; });
+  el.alerts.innerHTML = errs.concat(warns).map(function (i) {
+    var cls = i.level === "error" ? "alert-err" : "alert-warn";
+    var ico = i.level === "error" ? "!" : "•";
+    return '<div class="alert ' + cls + '"><span class="ico" aria-hidden="true">' + ico + "</span><p>" + esc(i.text) + "</p></div>";
+  }).join("");
+}
+
+function renderTabs() {
+  var counts = {
+    all: state.people.length,
+    confirmed: state.people.filter(function (p) { return p.confirmed; }).length,
+    notConfirmed: state.people.filter(function (p) { return !p.confirmed; }).length,
+    assigned: state.people.filter(function (p) { return !!p.assignment; }).length,
+    unassigned: state.people.filter(function (p) { return !p.assignment; }).length
+  };
+  el.tabs.innerHTML = FILTERS.map(function (f) {
+    var on = ui.filter === f.key;
+    return '<button class="tab" type="button" role="tab" aria-selected="' + (on ? "true" : "false") +
+      '" data-action="filter" data-filter="' + f.key + '">' + esc(f.label) +
+      ' <span class="n">' + counts[f.key] + "</span></button>";
+  }).join("");
+}
+
+function renderPeople() {
+  var list = visiblePeople();
+  el.peopleCount.textContent = list.length === state.people.length
+    ? state.people.length + " on the trip"
+    : list.length + " of " + state.people.length;
+
+  if (!list.length) {
+    el.peopleList.innerHTML = '<li class="empty">No one matches that filter.</li>';
+    return;
+  }
+
+  var others = state.people;
+
+  el.peopleList.innerHTML = list.map(function (p) {
+    var where = assignmentLabel(p);
+    var flag = p.confirmed && !p.assignment;
+
+    var pairOptions = ['<option value="">— nobody —</option>'].concat(
+      others.filter(function (o) { return o.id !== p.id; }).map(function (o) {
+        var sel = p.pairWith === o.id ? " selected" : "";
+        return '<option value="' + esc(o.id) + '"' + sel + ">" + esc(o.name) + "</option>";
+      })
+    ).join("");
+
+    return '<li class="person' + (flag ? " flag" : "") + '" data-person="' + esc(p.id) + '">' +
+      '<div class="person-top">' +
+        '<div class="person-id">' +
+          '<div class="person-name">' + esc(p.name) + "</div>" +
+          '<div class="person-where' + (where ? "" : " none") + '">' + (where ? esc(where) : "No bed assigned") + "</div>" +
+        "</div>" +
+        '<button class="toggle" type="button" data-action="toggle-confirm" data-person="' + esc(p.id) + '" aria-pressed="' + (p.confirmed ? "true" : "false") + '">' +
+          '<span class="dot" aria-hidden="true"></span>' + (p.confirmed ? "Confirmed" : "Not confirmed") +
+        "</button>" +
+      "</div>" +
+
+      '<div class="person-actions no-print">' +
+        '<button class="btn btn-sm" type="button" data-action="assign" data-person="' + esc(p.id) + '">' + (p.assignment ? "Move" : "Assign") + "</button>" +
+        (p.assignment ? '<button class="btn btn-sm" type="button" data-action="unassign" data-person="' + esc(p.id) + '">Remove from bed</button>' : "") +
+        '<button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="' + esc(p.id) + '">Delete</button>' +
+        '<span class="pair-row">' +
+          '<label for="pair_' + esc(p.id) + '">Shares bed with</label>' +
+          '<select id="pair_' + esc(p.id) + '" data-action="pair" data-person="' + esc(p.id) + '" aria-label="Bed-sharing partner for ' + esc(p.name) + '">' + pairOptions + "</select>" +
+        "</span>" +
+      "</div>" +
+
+      '<div class="person-note">' +
+        '<label class="sr-only" for="note_' + esc(p.id) + '">Note for ' + esc(p.name) + "</label>" +
+        '<input class="note-input" id="note_' + esc(p.id) + '" type="text" maxlength="300" placeholder="Note — flights, arrival day, snores…" value="' + esc(p.note) + '" data-action="note" data-person="' + esc(p.id) + '">' +
+      "</div>" +
+    "</li>";
+  }).join("");
+}
+
+function renderRooms(issues) {
+  el.rooms.innerHTML = state.rooms.map(function (room) {
+    var cap = roomCapacity(room);
+    var occ = roomOccupancy(room);
+    var free = Math.max(0, cap - occ);
+    var roomIssues = issues.filter(function (i) { return i.roomId === room.id && i.level === "error"; });
+    var badIsSlot = {};
+    roomIssues.forEach(function (i) { if (i.slotId) badIsSlot[i.slotId] = true; });
+
+    var modes = ROOM_MODES[room.type] || [];
+    var modeHtml = "";
+    if (modes.length) {
+      modeHtml = '<div class="room-mode no-print">' +
+        '<label for="mode_' + esc(room.id) + '">Layout</label>' +
+        '<select id="mode_' + esc(room.id) + '" data-action="mode" data-room="' + esc(room.id) + '">' +
+        modes.map(function (m) {
+          return '<option value="' + esc(m.value) + '"' + (room.mode === m.value ? " selected" : "") + ">" + esc(m.label) + "</option>";
+        }).join("") +
+        "</select></div>";
+    }
+
+    var slotsHtml = room.slots.map(function (slot) {
+      var over = slot.occupants.length > slot.capacity || badIsSlot[slot.id];
+      var filled = slot.occupants.length > 0;
+      var canAdd = slot.occupants.length < slot.capacity && occ < cap;
+
+      var chips = slot.occupants.map(function (pid) {
+        var p = personById(pid);
+        var nm = p ? p.name : "Unknown";
+        return '<span class="chip' + (p && !p.confirmed ? " unconf" : "") + '">' +
+          '<span class="nm">' + esc(nm) + "</span>" +
+          '<button class="x no-print" type="button" data-action="unassign" data-person="' + esc(pid) + '" aria-label="Remove ' + esc(nm) + ' from ' + esc(slot.label) + '">×</button>' +
+          "</span>";
+      }).join("");
+
+      if (!slot.occupants.length) chips = '<span class="slot-empty">Empty</span>';
+
+      return '<li class="slot' + (filled ? " filled" : "") + (over ? " over" : "") + '">' +
+        '<div class="slot-top">' +
+          '<span class="slot-label">' + esc(slot.label) +
+            ' <span class="kind">· ' + (slot.type === "sharedDouble" ? "shares, max 2" : "1 person") + "</span></span>" +
+          '<button class="btn btn-sm no-print" type="button" data-action="fill-slot" data-room="' + esc(room.id) + '" data-slot="' + esc(slot.id) + '"' +
+            (canAdd ? "" : " disabled") + ">+ Add</button>" +
+        "</div>" +
+        '<div class="occupants">' + chips + "</div>" +
+      "</li>";
+    }).join("");
+
+    var statusPill = occ > cap
+      ? '<span class="pill pill-err">Over capacity</span>'
+      : (occ === cap ? '<span class="pill pill-ok">Full</span>' : '<span class="pill pill-neutral">' + free + " space" + (free === 1 ? "" : "s") + " left</span>");
+
+    return '<article class="room' + (roomIssues.length ? " invalid" : "") + '" aria-labelledby="rt_' + esc(room.id) + '">' +
+      '<div class="room-head">' +
+        '<div class="room-title-row">' +
+          '<h3 class="room-title" id="rt_' + esc(room.id) + '">' + esc(room.name) + "</h3>" +
+          '<div class="room-meta"><span class="pill pill-neutral">' + occ + " / " + cap + "</span>" + statusPill + "</div>" +
+        "</div>" + modeHtml +
+      "</div>" +
+      (roomIssues.length ? '<p class="room-warn">⚠ ' + esc(roomIssues[0].text) + "</p>" : "") +
+      '<ul class="slots">' + slotsHtml + "</ul>" +
+    "</article>";
+  }).join("");
+}
+
+function render() {
+  syncAssignments();
+  var stats = getStats(state);
+  var issues = validateState(state);
+  renderStats(stats);
+  renderAlerts(issues);
+  renderTabs();
+  renderPeople();
+  renderRooms(issues);
+}
+
+/* ===============================================================
+   9. MODAL + TOAST
+   =============================================================== */
+
+var lastFocused = null;
+
+function openModal(opts) {
+  lastFocused = document.activeElement;
+  el.modalTitle.textContent = opts.title || "";
+  el.modalBody.innerHTML = opts.bodyHtml || "";
+  el.modalFoot.innerHTML = (opts.buttons || []).map(function (b, i) {
+    return '<button class="btn ' + (b.variant || "") + '" type="button" data-modal-btn="' + i + '">' + esc(b.label) + "</button>";
+  }).join("");
+
+  el.modalFoot.onclick = function (ev) {
+    var btn = ev.target.closest("[data-modal-btn]");
+    if (!btn) return;
+    var def = (opts.buttons || [])[Number(btn.getAttribute("data-modal-btn"))];
+    if (def && def.onClick) def.onClick();
+    else closeModal();
+  };
+
+  el.modalBody.onclick = function (ev) {
+    var pick = ev.target.closest("[data-pick]");
+    if (!pick || pick.disabled) return;
+    if (opts.onPick) opts.onPick(pick.getAttribute("data-pick"), pick);
+  };
+
+  el.backdrop.hidden = false;
+  document.body.style.overflow = "hidden";
+
+  var focusables = el.modal.querySelectorAll("button:not([disabled]),input,select,textarea,[href]");
+  var target = el.modalBody.querySelector("input,textarea,button:not([disabled])") || el.modalClose;
+  if (target) target.focus();
+  if (!focusables.length) el.modalClose.focus();
+}
+
+function closeModal() {
+  el.backdrop.hidden = true;
+  el.modalBody.innerHTML = "";
+  el.modalFoot.innerHTML = "";
+  el.modalBody.onclick = null;
+  el.modalFoot.onclick = null;
+  document.body.style.overflow = "";
+  if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch (e) {} }
+  lastFocused = null;
+}
+
+el.modalClose.addEventListener("click", closeModal);
+el.backdrop.addEventListener("mousedown", function (ev) { if (ev.target === el.backdrop) closeModal(); });
+
+document.addEventListener("keydown", function (ev) {
+  if (el.backdrop.hidden) return;
+  if (ev.key === "Escape") { ev.preventDefault(); closeModal(); return; }
+  if (ev.key !== "Tab") return;
+  var nodes = Array.prototype.filter.call(
+    el.modal.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'),
+    function (n) { return n.offsetParent !== null || n === document.activeElement; }
+  );
+  if (!nodes.length) return;
+  var first = nodes[0], last = nodes[nodes.length - 1];
+  if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+});
+
+var toastTimer = null;
+function toast(msg) {
+  el.toast.textContent = msg;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.toast.hidden = true; }, 2600);
+}
+
+function confirmDialog(title, message, confirmLabel, onConfirm) {
+  openModal({
+    title: title,
+    bodyHtml: '<p class="modal-note">' + esc(message) + "</p>",
+    buttons: [
+      { label: "Cancel", onClick: closeModal },
+      { label: confirmLabel, variant: "btn-danger", onClick: function () { closeModal(); onConfirm(); } }
+    ]
+  });
+}
+
+/* ===============================================================
+   10. PICKERS
+   =============================================================== */
+
+function openAssignPicker(personId) {
+  var person = personById(personId);
+  if (!person) return;
+
+  var html = state.rooms.map(function (room) {
+    var cap = roomCapacity(room);
+    var occ = roomOccupancy(room);
+
+    var slots = room.slots.map(function (slot) {
+      var here = slot.occupants.indexOf(personId) !== -1;
+      var roomFullForNewcomer = occ >= cap && !here;
+      var slotFull = slot.occupants.length >= slot.capacity && !here;
+      var disabled = here || slotFull || roomFullForNewcomer;
+
+      var mates = slot.occupants.map(function (id) { var m = personById(id); return m ? m.name : "?"; });
+      var meta = here ? "Currently here"
+        : slotFull ? "Full"
+        : roomFullForNewcomer ? "Room full"
+        : (slot.capacity - slot.occupants.length) + " free";
+
+      return '<button class="pick" type="button" data-pick="' + esc(room.id) + "|" + esc(slot.id) + '"' + (disabled ? " disabled" : "") + ">" +
+        '<span class="lead"><span class="nm">' + esc(slot.label) + "</span>" +
+        (mates.length ? '<span class="meta">' + esc(mates.join(", ")) + "</span>" : "") + "</span>" +
+        '<span class="meta">' + esc(meta) + "</span></button>";
+    }).join("");
+
+    return '<div class="pick-group"><h3>' + esc(room.name) + " · " + occ + "/" + cap + "</h3>" + slots + "</div>";
+  }).join("");
+
+  openModal({
+    title: "Where does " + person.name + " sleep?",
+    bodyHtml: html,
+    buttons: person.assignment
+      ? [{ label: "Remove from bed", variant: "btn-danger", onClick: function () { removeAssignment(personId); closeModal(); render(); toast(person.name + " removed from their bed."); } },
+         { label: "Close", onClick: closeModal }]
+      : [{ label: "Close", onClick: closeModal }],
+    onPick: function (value) {
+      var parts = value.split("|");
+      var res = assignPerson(personId, parts[0], parts[1]);
+      if (!res.ok) { toast(res.message); return; }
+      closeModal();
+      render();
+      toast(res.message);
+    }
+  });
+}
+
+function openSlotPicker(roomId, slotId) {
+  var room = roomById(roomId);
+  if (!room) return;
+  var slot = slotById(room, slotId);
+  if (!slot) return;
+
+  function row(p) {
+    var where = assignmentLabel(p);
+    return '<button class="pick" type="button" data-pick="' + esc(p.id) + '">' +
+      '<span class="lead"><span class="nm">' + esc(p.name) + "</span>" +
+      '<span class="pill ' + (p.confirmed ? "pill-ok" : "pill-pend") + '">' + (p.confirmed ? "Confirmed" : "Pending") + "</span></span>" +
+      '<span class="meta">' + esc(where ? "Move from " + where.split(" (with")[0] : "No bed yet") + "</span></button>";
+  }
+
+  var free = state.people.filter(function (p) { return !p.assignment; });
+  var placed = state.people.filter(function (p) { return p.assignment && slot.occupants.indexOf(p.id) === -1; });
+
+  var freeConf = free.filter(function (p) { return p.confirmed; });
+  var freePend = free.filter(function (p) { return !p.confirmed; });
+
+  var html = "";
+  if (freeConf.length) html += '<div class="pick-group"><h3>Confirmed, no bed yet</h3>' + freeConf.map(row).join("") + "</div>";
+  if (freePend.length) html += '<div class="pick-group"><h3>Not confirmed</h3>' + freePend.map(row).join("") + "</div>";
+  if (placed.length) html += '<div class="pick-group"><h3>Already in another bed — move them</h3>' + placed.map(row).join("") + "</div>";
+  if (!html) html = '<p class="modal-note">Everyone is already in this bed or there is no one left to place.</p>';
+
+  openModal({
+    title: room.name + " · " + slot.label,
+    bodyHtml: html,
+    buttons: [{ label: "Close", onClick: closeModal }],
+    onPick: function (pid) {
+      var res = assignPerson(pid, roomId, slotId);
+      if (!res.ok) { toast(res.message); return; }
+      closeModal();
+      render();
+      toast(res.message);
+    }
+  });
+}
+
+function openExport() {
+  var json = JSON.stringify(exportPlan(), null, 2);
+  openModal({
+    title: "Export plan",
+    bodyHtml:
+      '<p class="modal-note">The complete current plan — people, statuses, notes and every bed. Copy it, or download the file.</p>' +
+      '<label class="sr-only" for="export-json">Plan JSON</label>' +
+      '<textarea class="input" id="export-json" readonly spellcheck="false">' + esc(json) + "</textarea>",
+    buttons: [
+      { label: "Copy", onClick: function () {
+          var ta = document.getElementById("export-json");
+          ta.focus(); ta.select();
+          var done = false;
+          try { done = document.execCommand("copy"); } catch (e) { done = false; }
+          if (!done && navigator.clipboard) {
+            navigator.clipboard.writeText(json).then(function () { toast("Copied to clipboard."); },
+              function () { toast("Copy failed — select the text and copy manually."); });
+            return;
+          }
+          toast(done ? "Copied to clipboard." : "Select the text and copy manually.");
+        } },
+      { label: "Download .json", onClick: function () {
+          var ok = download("ski-trip-2027-plan.json", json);
+          toast(ok ? "File downloaded." : "Download blocked here — copy the text instead.");
+        } },
+      { label: "Close", onClick: closeModal }
+    ]
+  });
+}
+
+function openImport() {
+  openModal({
+    title: "Import plan",
+    bodyHtml:
+      '<p class="modal-note">Paste an exported plan, or choose a .json file. This replaces everything currently on screen.</p>' +
+      '<div class="file-row"><label for="import-file">Load a file:</label><input type="file" id="import-file" accept="application/json,.json"></div>' +
+      '<label class="sr-only" for="import-json">Plan JSON</label>' +
+      '<textarea class="input" id="import-json" spellcheck="false" placeholder="{ &quot;people&quot;: [...], &quot;rooms&quot;: [...] }"></textarea>' +
+      '<p class="modal-note" id="import-msg"></p>',
+    buttons: [
+      { label: "Cancel", onClick: closeModal },
+      { label: "Import", variant: "btn-primary", onClick: function () {
+          var msg = document.getElementById("import-msg");
+          var raw = document.getElementById("import-json").value.trim();
+          if (!raw) { msg.textContent = "Nothing to import yet."; msg.style.color = "var(--err)"; return; }
+          var parsed;
+          try { parsed = JSON.parse(raw); }
+          catch (e) { msg.textContent = "That isn't valid JSON: " + e.message; msg.style.color = "var(--err)"; return; }
+          try { importPlan(parsed); }
+          catch (e2) { msg.textContent = "Could not import: " + e2.message; msg.style.color = "var(--err)"; return; }
+          closeModal();
+          render();
+          toast("Plan imported — " + state.people.length + " people.");
+        } }
+    ]
+  });
+
+  var fileInput = document.getElementById("import-file");
+  fileInput.addEventListener("change", function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      document.getElementById("import-json").value = String(reader.result || "");
+      var msg = document.getElementById("import-msg");
+      msg.textContent = "Loaded " + f.name + ". Press Import to apply.";
+      msg.style.color = "var(--text-dim)";
+    };
+    reader.onerror = function () {
+      var msg = document.getElementById("import-msg");
+      msg.textContent = "Could not read that file.";
+      msg.style.color = "var(--err)";
+    };
+    reader.readAsText(f);
+  });
+}
+
+/* ===============================================================
+   11. EVENT HANDLERS
+   =============================================================== */
+
+document.addEventListener("click", function (ev) {
+  var node = ev.target.closest("[data-action]");
+  if (!node) return;
+  var action = node.getAttribute("data-action");
+  var personId = node.getAttribute("data-person");
+  var roomId = node.getAttribute("data-room");
+  var slotId = node.getAttribute("data-slot");
+
+  if (action === "filter") {
+    ui.filter = node.getAttribute("data-filter");
+    renderTabs();
+    renderPeople();
+    return;
+  }
+
+  if (action === "toggle-confirm") {
+    var p = personById(personId);
+    if (!p) return;
+    p.confirmed = !p.confirmed;
+    render();
+    return;
+  }
+
+  if (action === "assign") { openAssignPicker(personId); return; }
+
+  if (action === "unassign") {
+    var up = personById(personId);
+    removeAssignment(personId);
+    render();
+    if (up) toast(up.name + " removed from their bed.");
+    return;
+  }
+
+  if (action === "fill-slot") { openSlotPicker(roomId, slotId); return; }
+
+  if (action === "delete-person") {
+    var dp = personById(personId);
+    if (!dp) return;
+    confirmDialog("Remove " + dp.name + "?", dp.name + " will be taken off the trip list and out of any bed. This cannot be undone.", "Remove", function () {
+      removeAssignment(personId);
+      state.people = state.people.filter(function (x) { return x.id !== personId; });
+      state.people.forEach(function (x) { if (x.pairWith === personId) x.pairWith = null; });
+      render();
+      toast(dp.name + " removed from the trip.");
+    });
+  }
+});
+
+/* notes: update silently so the field keeps focus */
+document.addEventListener("input", function (ev) {
+  var node = ev.target;
+  if (node.getAttribute && node.getAttribute("data-action") === "note") {
+    var p = personById(node.getAttribute("data-person"));
+    if (p) p.note = node.value;
+  }
+});
+
+document.addEventListener("change", function (ev) {
+  var node = ev.target;
+  if (!node.getAttribute) return;
+  var action = node.getAttribute("data-action");
+
+  if (action === "mode") {
+    var res = changeRoomMode(node.getAttribute("data-room"), node.value);
+    render();
+    if (res.message) toast(res.message);
+    return;
+  }
+
+  if (action === "pair") {
+    var id = node.getAttribute("data-person");
+    var me = personById(id);
+    if (!me) return;
+    var prev = me.pairWith ? personById(me.pairWith) : null;
+    if (prev) prev.pairWith = null;
+    me.pairWith = null;
+
+    if (node.value) {
+      var other = personById(node.value);
+      if (other) {
+        var otherPrev = other.pairWith ? personById(other.pairWith) : null;
+        if (otherPrev) otherPrev.pairWith = null;
+        me.pairWith = other.id;
+        other.pairWith = me.id;
+      }
+    }
+    render();
+    return;
+  }
+});
+
+el.search.addEventListener("input", function () {
+  ui.search = el.search.value;
+  renderPeople();
+});
+
+function addPersonFromInput() {
+  var name = el.newPerson.value.trim();
+  if (!name) { el.newPerson.focus(); return; }
+  var clash = state.people.some(function (p) { return p.name.toLowerCase() === name.toLowerCase(); });
+  state.people.push(makePerson(name.slice(0, 40)));
+  el.newPerson.value = "";
+  render();
+  el.newPerson.focus();
+  toast(clash ? "Added " + name + " — heads up, that name is already on the list." : name + " added to the trip.");
+}
+
+document.getElementById("btn-add-person").addEventListener("click", addPersonFromInput);
+el.newPerson.addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") { ev.preventDefault(); addPersonFromInput(); }
+});
+
+document.getElementById("btn-suggest").addEventListener("click", function () {
+  confirmDialog(
+    "Run suggested allocation?",
+    "This clears every current bed assignment and rebuilds the plan: confirmed people first, bed-sharing pairs into the double rooms, then the family room, then the dormitory.",
+    "Allocate",
+    function () {
+      var res = suggestAllocation();
+      render();
+      toast(res.leftOut > 0
+        ? "Allocated " + res.seated + " people. " + res.leftOut + " left without a bed — not enough beds."
+        : "Allocated " + res.seated + " people.");
+    }
+  );
+});
+
+document.getElementById("btn-export").addEventListener("click", openExport);
+document.getElementById("btn-import").addEventListener("click", openImport);
+document.getElementById("btn-print").addEventListener("click", function () { window.print(); });
+
+document.getElementById("btn-reset-alloc").addEventListener("click", function () {
+  confirmDialog("Reset all bed allocations?", "Everyone stays on the list with their status and notes. Every bed is emptied and room layouts go back to their defaults.", "Reset allocations", function () {
+    state.rooms.forEach(function (room) {
+      var bp = null;
+      ROOM_BLUEPRINT.forEach(function (b) { if (b.id === room.id) bp = b; });
+      room.mode = bp ? bp.mode : defaultModeFor(room.type);
+      room.slots = createSlotsForRoom(room.type, room.mode);
+    });
+    state.people.forEach(function (p) { p.assignment = null; });
+    render();
+    toast("All beds emptied.");
+  });
+});
+
+document.getElementById("btn-reset-all").addEventListener("click", function () {
+  confirmDialog("Reset everything?", "Back to the original 15 names, nobody confirmed, no notes, no beds assigned. Anyone you added is removed.", "Reset all", function () {
+    state = initialState();
+    ui.filter = "all";
+    ui.search = "";
+    el.search.value = "";
+    render();
+    toast("Everything reset.");
+  });
+});
+
+/* ===============================================================
+   12. BOOT
+   =============================================================== */
+
+state = initialState();
+render();
+
+})();
+</script>
+</body>
+</html>
