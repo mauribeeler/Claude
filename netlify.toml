@@ -1,0 +1,16 @@
+# Only ./public is published. Everything else in this repo — CLAUDE.md,
+# notebooklm_research.py, notebooklm_output — stays private and is never
+# uploaded. Do not widen `publish` to the repo root.
+[build]
+  publish = "public"
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "no-referrer"
+    # The planner is a single self-contained page: no analytics, no third-party
+    # requests, no data leaving the browser.
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), interest-cohort=()"
