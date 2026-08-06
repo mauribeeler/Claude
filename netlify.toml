@@ -5,12 +5,22 @@
   publish = "public"
   command = ""
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [[headers]]
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "SAMEORIGIN"
     Referrer-Policy = "no-referrer"
-    # The planner is a single self-contained page: no analytics, no third-party
-    # requests, no data leaving the browser.
+    # The planner talks only to its own /api/plan endpoint: no analytics, no
+    # third-party requests, nothing loaded from another origin.
     Permissions-Policy = "geolocation=(), camera=(), microphone=(), interest-cohort=()"
+
+# The shared plan must never be cached, or people would act on a stale copy.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store"

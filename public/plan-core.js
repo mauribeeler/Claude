@@ -1,0 +1,639 @@
+/*
+ * plan-core.js — the whole room-allocation model, with no DOM and no network.
+ *
+ * This module is loaded by BOTH the browser (as an ES module) and the Netlify
+ * function. Keeping one copy is what makes shared editing trustworthy: the
+ * optimistic result you see locally is produced by exactly the same code the
+ * server uses to decide the real answer, so the two cannot drift.
+ *
+ * Every exported operation is pure: it takes a state, returns a NEW state, and
+ * never mutates its argument. That is what lets the server retry an operation
+ * against fresher state after a write collision without any cleanup.
+ */
+
+export const SCHEMA_VERSION = 2;
+
+export const STARTING_PEOPLE = [
+  "Amelia", "Charles", "Courtney", "Graham", "Hannah", "Henry", "JJ", "Joel",
+  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley"
+];
+
+export const ROOM_BLUEPRINT = [
+  { id: "double1", name: "Double Room 1", type: "double", mode: "twin" },
+  { id: "double2", name: "Double Room 2", type: "double", mode: "twin" },
+  { id: "family",  name: "Family Room",   type: "family", mode: "fourSingles" },
+  { id: "dorm",    name: "Dormitory",     type: "dorm",   mode: "standard" }
+];
+
+export const ROOM_CAPACITY = { double: 2, family: 4, dorm: 6 };
+
+export const ROOM_MODES = {
+  double: [
+    { value: "twin",   label: "Twin — 2 single beds" },
+    { value: "couple", label: "Couple — 1 double bed" }
+  ],
+  family: [
+    { value: "fourSingles",          label: "4 single beds" },
+    { value: "doublePlusTwoSingles", label: "Double bed + 2 singles" }
+  ],
+  dorm: []
+};
+
+export const MAX_NAME = 40;
+export const MAX_NOTE = 300;
+export const MAX_PEOPLE = 60;
+
+/* --------------------------------------------------------------------------
+   ids + cloning
+   -------------------------------------------------------------------------- */
+
+let seq = 0;
+export function uid(prefix) {
+  seq += 1;
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}_${Date.now().toString(36)}${seq.toString(36)}${rand}`;
+}
+
+export function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+/* An operation that the caller got wrong (full room, unknown person, …).
+   Carries an HTTP-ish status so the function layer can answer sensibly. */
+export class PlanError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = "PlanError";
+    this.status = status;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   slot generation
+   -------------------------------------------------------------------------- */
+
+function makeSlot(type, label) {
+  return {
+    id: uid("s"),
+    type,
+    capacity: type === "sharedDouble" ? 2 : 1,
+    label,
+    occupants: []
+  };
+}
+
+export function createSlotsForRoom(roomType, mode) {
+  if (roomType === "double") {
+    return mode === "couple"
+      ? [makeSlot("sharedDouble", "Double bed")]
+      : [makeSlot("single", "Single bed 1"), makeSlot("single", "Single bed 2")];
+  }
+  if (roomType === "family") {
+    return mode === "doublePlusTwoSingles"
+      ? [makeSlot("sharedDouble", "Double bed"), makeSlot("single", "Single bed 1"), makeSlot("single", "Single bed 2")]
+      : [1, 2, 3, 4].map((i) => makeSlot("single", `Single bed ${i}`));
+  }
+  return [1, 2, 3, 4, 5, 6].map((i) => makeSlot("single", `Bunk ${i}`));
+}
+
+export function defaultModeFor(roomType) {
+  if (roomType === "double") return "twin";
+  if (roomType === "family") return "fourSingles";
+  return "standard";
+}
+
+export function validModesFor(roomType) {
+  const list = ROOM_MODES[roomType] || [];
+  return list.length ? list.map((m) => m.value) : ["standard"];
+}
+
+export function roomCapacity(room) {
+  return ROOM_CAPACITY[room.type] ?? room.slots.reduce((n, s) => n + s.capacity, 0);
+}
+
+export function roomOccupancy(room) {
+  return room.slots.reduce((n, s) => n + s.occupants.length, 0);
+}
+
+export function makePerson(name) {
+  return { id: uid("p"), name, confirmed: false, note: "", pairWith: null, assignment: null };
+}
+
+export function initialState() {
+  return {
+    version: SCHEMA_VERSION,
+    tripName: "Ski Trip 2027 — Zermatt",
+    people: STARTING_PEOPLE.map(makePerson),
+    rooms: ROOM_BLUEPRINT.map((b) => ({
+      id: b.id, name: b.name, type: b.type, mode: b.mode,
+      slots: createSlotsForRoom(b.type, b.mode)
+    }))
+  };
+}
+
+/* --------------------------------------------------------------------------
+   lookups
+   -------------------------------------------------------------------------- */
+
+export const personById = (state, id) => state.people.find((p) => p.id === id) || null;
+export const roomById = (state, id) => state.rooms.find((r) => r.id === id) || null;
+export const slotById = (room, id) => room.slots.find((s) => s.id === id) || null;
+
+/*
+ * Slots are the single source of truth for occupancy; person.assignment is a
+ * mirror. Rebuilding it here means a merged or imported state can never carry
+ * a person in two beds, or a bed pointing at someone who has left the trip.
+ */
+export function syncAssignments(state) {
+  const seen = new Set();
+  state.people.forEach((p) => { p.assignment = null; });
+
+  state.rooms.forEach((room) => {
+    room.slots.forEach((slot) => {
+      const kept = [];
+      slot.occupants.forEach((pid) => {
+        const person = personById(state, pid);
+        if (!person || seen.has(pid)) return;
+        seen.add(pid);
+        kept.push(pid);
+        person.assignment = { roomId: room.id, slotId: slot.id };
+      });
+      slot.occupants = kept;
+    });
+  });
+
+  state.people.forEach((p) => {
+    if (!p.pairWith) return;
+    const other = personById(state, p.pairWith);
+    if (!other || other.id === p.id || other.pairWith !== p.id) p.pairWith = null;
+  });
+
+  return state;
+}
+
+export function assignmentLabel(state, person) {
+  if (!person.assignment) return null;
+  const room = roomById(state, person.assignment.roomId);
+  if (!room) return null;
+  const slot = slotById(room, person.assignment.slotId);
+  if (!slot) return null;
+  const mates = slot.occupants
+    .filter((id) => id !== person.id)
+    .map((id) => personById(state, id)?.name ?? "?");
+  return `${room.name} · ${slot.label}${mates.length ? ` (with ${mates.join(", ")})` : ""}`;
+}
+
+/* --------------------------------------------------------------------------
+   derived stats
+   -------------------------------------------------------------------------- */
+
+export function getStats(state) {
+  let confirmed = 0, assigned = 0, confirmedUnassigned = 0;
+  state.people.forEach((p) => {
+    if (p.confirmed) confirmed += 1;
+    if (p.assignment) assigned += 1;
+    else if (p.confirmed) confirmedUnassigned += 1;
+  });
+
+  const total = state.people.length;
+  const beds = state.rooms.reduce((n, r) => n + (ROOM_CAPACITY[r.type] || 0), 0);
+  const occupied = state.rooms.reduce((n, r) => n + roomOccupancy(r), 0);
+
+  return {
+    total,
+    confirmed,
+    notConfirmed: total - confirmed,
+    assigned,
+    unassigned: total - assigned,
+    beds,
+    occupied,
+    spacesRemaining: Math.max(0, beds - occupied),
+    confirmedUnassigned,
+    occupancyPct: beds > 0 ? Math.round((occupied / beds) * 100) : 0,
+    overCapacityBy: Math.max(0, total - beds)
+  };
+}
+
+/* --------------------------------------------------------------------------
+   validation
+   -------------------------------------------------------------------------- */
+
+export function validateState(state) {
+  const issues = [];
+  const placements = new Map();
+
+  state.rooms.forEach((room) => {
+    const cap = ROOM_CAPACITY[room.type] || 0;
+    const occ = roomOccupancy(room);
+
+    if (!validModesFor(room.type).includes(room.mode)) {
+      issues.push({ level: "error", roomId: room.id, text: `${room.name} has an unrecognised layout (${room.mode}).` });
+    }
+    if (occ > cap) {
+      issues.push({ level: "error", roomId: room.id, text: `${room.name} holds ${occ} people but only sleeps ${cap}. Move ${occ - cap} out.` });
+    }
+
+    room.slots.forEach((slot) => {
+      if (slot.occupants.length > slot.capacity) {
+        issues.push({
+          level: "error", roomId: room.id, slotId: slot.id,
+          text: `${room.name} · ${slot.label} has ${slot.occupants.length} people in a ${slot.capacity}-person bed.`
+        });
+      }
+      slot.occupants.forEach((pid) => {
+        if (!personById(state, pid)) {
+          issues.push({ level: "error", roomId: room.id, text: `${room.name} · ${slot.label} refers to someone who is no longer on the trip.` });
+          return;
+        }
+        placements.set(pid, (placements.get(pid) || 0) + 1);
+      });
+    });
+  });
+
+  placements.forEach((count, pid) => {
+    if (count > 1) {
+      issues.push({ level: "error", text: `${personById(state, pid)?.name ?? "Someone"} is in ${count} beds at once.` });
+    }
+  });
+
+  const stats = getStats(state);
+
+  if (stats.overCapacityBy > 0) {
+    issues.push({
+      level: "error",
+      text: `${stats.total} people on the list but only ${stats.beds} beds — ${stats.overCapacityBy} will have nowhere to sleep. Add accommodation or trim the list.`
+    });
+  }
+
+  if (stats.confirmedUnassigned > 0) {
+    const names = state.people.filter((p) => p.confirmed && !p.assignment).map((p) => p.name);
+    issues.push({
+      level: "warn",
+      text: `${stats.confirmedUnassigned} confirmed ${stats.confirmedUnassigned === 1 ? "person has" : "people have"} no bed: ${names.join(", ")}.`
+    });
+  }
+
+  return issues;
+}
+
+/* --------------------------------------------------------------------------
+   import normalisation
+   -------------------------------------------------------------------------- */
+
+export function normalizePlan(data) {
+  if (!data || typeof data !== "object") throw new PlanError("That isn't a plan object.");
+  if (!Array.isArray(data.people)) throw new PlanError("Missing a 'people' array.");
+  if (!Array.isArray(data.rooms)) throw new PlanError("Missing a 'rooms' array.");
+  if (data.people.length > MAX_PEOPLE) throw new PlanError(`That plan has more than ${MAX_PEOPLE} people.`);
+
+  const usedIds = new Set();
+
+  const people = data.people.map((raw, i) => {
+    if (!raw || typeof raw !== "object") throw new PlanError(`Person #${i + 1} is not an object.`);
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) throw new PlanError(`Person #${i + 1} has no name.`);
+    const id = typeof raw.id === "string" && raw.id && !usedIds.has(raw.id) ? raw.id : uid("p");
+    usedIds.add(id);
+    return {
+      id,
+      name: name.slice(0, MAX_NAME),
+      confirmed: raw.confirmed === true,
+      note: typeof raw.note === "string" ? raw.note.slice(0, MAX_NOTE) : "",
+      pairWith: typeof raw.pairWith === "string" ? raw.pairWith : null,
+      assignment: null
+    };
+  });
+
+  const rooms = data.rooms.map((raw, i) => {
+    if (!raw || typeof raw !== "object") throw new PlanError(`Room #${i + 1} is not an object.`);
+    if (!ROOM_CAPACITY[raw.type]) throw new PlanError(`Room #${i + 1} has unknown type '${raw.type}'.`);
+    const mode = validModesFor(raw.type).includes(raw.mode) ? raw.mode : defaultModeFor(raw.type);
+
+    let slots;
+    if (Array.isArray(raw.slots) && raw.slots.length) {
+      slots = raw.slots.map((rs, j) => {
+        const stype = rs && rs.type === "sharedDouble" ? "sharedDouble" : "single";
+        const slot = makeSlot(stype, rs && typeof rs.label === "string" && rs.label
+          ? rs.label
+          : (stype === "sharedDouble" ? "Double bed" : `Bed ${j + 1}`));
+        if (rs && typeof rs.id === "string" && rs.id) slot.id = rs.id;
+        slot.occupants = Array.isArray(rs?.occupants) ? rs.occupants.filter((x) => typeof x === "string") : [];
+        return slot;
+      });
+    } else {
+      slots = createSlotsForRoom(raw.type, mode);
+    }
+
+    return {
+      id: typeof raw.id === "string" && raw.id ? raw.id : uid("r"),
+      name: typeof raw.name === "string" && raw.name ? raw.name.slice(0, 60) : `Room ${i + 1}`,
+      type: raw.type,
+      mode,
+      slots
+    };
+  });
+
+  if (!rooms.length) throw new PlanError("A plan needs at least one room.");
+
+  return syncAssignments({
+    version: SCHEMA_VERSION,
+    tripName: typeof data.tripName === "string" && data.tripName ? data.tripName : "Ski Trip 2027 — Zermatt",
+    people,
+    rooms
+  });
+}
+
+/* --------------------------------------------------------------------------
+   mutations — each returns a new state
+   -------------------------------------------------------------------------- */
+
+function removeAssignmentIn(state, personId) {
+  state.rooms.forEach((room) => {
+    room.slots.forEach((slot) => {
+      slot.occupants = slot.occupants.filter((id) => id !== personId);
+    });
+  });
+  const p = personById(state, personId);
+  if (p) p.assignment = null;
+}
+
+function assignIn(state, personId, roomId, slotId) {
+  const person = personById(state, personId);
+  if (!person) throw new PlanError("That person is no longer on the trip.", 409);
+  const room = roomById(state, roomId);
+  if (!room) throw new PlanError("That room no longer exists.", 409);
+  const slot = slotById(room, slotId);
+  if (!slot) throw new PlanError("That bed no longer exists — the room layout may have changed.", 409);
+
+  if (slot.occupants.includes(personId)) return `${person.name} is already there.`;
+
+  if (slot.occupants.length >= slot.capacity) {
+    throw new PlanError(`${slot.label} in ${room.name} is already taken.`, 409);
+  }
+  if (roomOccupancy(room) >= roomCapacity(room)) {
+    throw new PlanError(`${room.name} is already full.`, 409);
+  }
+
+  removeAssignmentIn(state, personId);
+  slot.occupants.push(personId);
+  person.assignment = { roomId: room.id, slotId: slot.id };
+  return `${person.name} → ${room.name} · ${slot.label}`;
+}
+
+/*
+ * Layout changes keep everyone who was in the room. Existing couples stay in a
+ * shared double where the new layout has one; anyone who genuinely cannot be
+ * re-seated is parked in the last bed so it shows up as an over-capacity
+ * warning the organiser can resolve, rather than vanishing.
+ */
+function changeRoomModeIn(state, roomId, mode) {
+  const room = roomById(state, roomId);
+  if (!room) throw new PlanError("Room not found.", 409);
+  if (!validModesFor(room.type).includes(mode)) throw new PlanError("Unsupported layout.");
+  if (room.mode === mode) return "";
+
+  const groups = room.slots
+    .filter((s) => s.occupants.length > 0)
+    .map((s) => ({ shared: s.type === "sharedDouble" && s.occupants.length > 1, ids: s.occupants.slice() }));
+
+  const newSlots = createSlotsForRoom(room.type, mode);
+  const sharedTargets = newSlots.filter((s) => s.type === "sharedDouble");
+  let loose = [];
+
+  groups.forEach((g) => {
+    if (!g.shared) { loose = loose.concat(g.ids); return; }
+    const target = sharedTargets.find((s) => s.occupants.length === 0);
+    if (!target) { loose = loose.concat(g.ids); return; }
+    target.occupants = g.ids.slice(0, target.capacity);
+    loose = loose.concat(g.ids.slice(target.capacity));
+  });
+
+  const unseated = [];
+  loose.forEach((pid) => {
+    const target = newSlots.find((s) => s.occupants.length < s.capacity);
+    if (target) target.occupants.push(pid);
+    else unseated.push(pid);
+  });
+
+  if (unseated.length && newSlots.length) {
+    newSlots[newSlots.length - 1].occupants.push(...unseated);
+  }
+
+  room.mode = mode;
+  room.slots = newSlots;
+  syncAssignments(state);
+
+  if (unseated.length) {
+    const names = unseated.map((id) => personById(state, id)?.name ?? "?").join(", ");
+    return `Layout changed, but ${names} no longer fit — resolve the highlighted bed.`;
+  }
+  return "Layout changed. Assignments kept.";
+}
+
+function resetAllocationsIn(state) {
+  state.rooms.forEach((room) => {
+    const bp = ROOM_BLUEPRINT.find((b) => b.id === room.id);
+    room.mode = bp ? bp.mode : defaultModeFor(room.type);
+    room.slots = createSlotsForRoom(room.type, room.mode);
+  });
+  state.people.forEach((p) => { p.assignment = null; });
+}
+
+/*
+ * Suggested allocation: confirmed travellers first, mutual bed-sharing pairs
+ * into the double rooms, then the family room, then the dormitory. Strangers
+ * are never put in the same bed, and capacity is never exceeded.
+ */
+function suggestIn(state) {
+  resetAllocationsIn(state);
+
+  const queue = [
+    ...state.people.filter((p) => p.confirmed),
+    ...state.people.filter((p) => !p.confirmed)
+  ];
+
+  const taken = new Set();
+  const pairs = [];
+  const singles = [];
+
+  queue.forEach((p) => {
+    if (taken.has(p.id)) return;
+    if (p.pairWith) {
+      const other = personById(state, p.pairWith);
+      if (other && !taken.has(other.id) && other.pairWith === p.id) {
+        taken.add(p.id); taken.add(other.id);
+        pairs.push([p, other]);
+        return;
+      }
+    }
+    taken.add(p.id);
+    singles.push(p);
+  });
+
+  const doubles = state.rooms.filter((r) => r.type === "double");
+  const family = state.rooms.find((r) => r.type === "family");
+  const dorms = state.rooms.filter((r) => r.type === "dorm");
+  const usedDoubles = new Set();
+
+  let pairIdx = 0;
+  for (const room of doubles) {
+    if (pairIdx >= pairs.length) break;
+    room.mode = "couple";
+    room.slots = createSlotsForRoom(room.type, "couple");
+    room.slots[0].occupants = pairs[pairIdx].map((p) => p.id);
+    usedDoubles.add(room.id);
+    pairIdx += 1;
+  }
+
+  if (pairIdx < pairs.length && family) {
+    family.mode = "doublePlusTwoSingles";
+    family.slots = createSlotsForRoom(family.type, "doublePlusTwoSingles");
+    family.slots[0].occupants = pairs[pairIdx].map((p) => p.id);
+    pairIdx += 1;
+  }
+
+  // pairs we could not seat as a couple fall back to being individuals
+  while (pairIdx < pairs.length) {
+    singles.push(pairs[pairIdx][0], pairs[pairIdx][1]);
+    pairIdx += 1;
+  }
+
+  const fillOrder = [
+    ...doubles.filter((r) => !usedDoubles.has(r.id)),
+    ...(family ? [family] : []),
+    ...dorms
+  ];
+
+  let qi = 0;
+  fillOrder.forEach((room) => {
+    room.slots.forEach((slot) => {
+      if (slot.type === "sharedDouble") return; // never sit strangers in one bed
+      while (slot.occupants.length < slot.capacity && qi < singles.length) {
+        if (roomOccupancy(room) >= roomCapacity(room)) return;
+        slot.occupants.push(singles[qi].id);
+        qi += 1;
+      }
+    });
+  });
+
+  syncAssignments(state);
+
+  const leftOut = singles.length - qi;
+  const seated = state.people.filter((p) => p.assignment).length;
+  return leftOut > 0
+    ? `Allocated ${seated} people. ${leftOut} left without a bed — not enough beds.`
+    : `Allocated ${seated} people.`;
+}
+
+/* --------------------------------------------------------------------------
+   the operation table — the only way state ever changes
+   -------------------------------------------------------------------------- */
+
+const OPS = {
+  setConfirmed(state, { personId, confirmed }) {
+    const p = personById(state, personId);
+    if (!p) throw new PlanError("That person is no longer on the trip.", 409);
+    p.confirmed = confirmed === true;
+    return `${p.name} marked ${p.confirmed ? "confirmed" : "not confirmed"}.`;
+  },
+
+  setNote(state, { personId, note }) {
+    const p = personById(state, personId);
+    if (!p) throw new PlanError("That person is no longer on the trip.", 409);
+    p.note = String(note ?? "").slice(0, MAX_NOTE);
+    return "";
+  },
+
+  addPerson(state, { name }) {
+    const clean = String(name ?? "").trim().slice(0, MAX_NAME);
+    if (!clean) throw new PlanError("A name is required.");
+    if (state.people.length >= MAX_PEOPLE) throw new PlanError(`This plan is capped at ${MAX_PEOPLE} people.`);
+    state.people.push(makePerson(clean));
+    return `${clean} added to the trip.`;
+  },
+
+  deletePerson(state, { personId }) {
+    const p = personById(state, personId);
+    if (!p) return ""; // already gone: someone else removed them, nothing to do
+    removeAssignmentIn(state, personId);
+    state.people = state.people.filter((x) => x.id !== personId);
+    state.people.forEach((x) => { if (x.pairWith === personId) x.pairWith = null; });
+    return `${p.name} removed from the trip.`;
+  },
+
+  setPair(state, { personId, otherId }) {
+    const me = personById(state, personId);
+    if (!me) throw new PlanError("That person is no longer on the trip.", 409);
+
+    if (me.pairWith) {
+      const prev = personById(state, me.pairWith);
+      if (prev) prev.pairWith = null;
+    }
+    me.pairWith = null;
+
+    if (otherId) {
+      const other = personById(state, otherId);
+      if (!other) throw new PlanError("That person is no longer on the trip.", 409);
+      if (other.pairWith) {
+        const otherPrev = personById(state, other.pairWith);
+        if (otherPrev) otherPrev.pairWith = null;
+      }
+      me.pairWith = other.id;
+      other.pairWith = me.id;
+      return `${me.name} and ${other.name} are sharing a bed.`;
+    }
+    return "";
+  },
+
+  assign(state, { personId, roomId, slotId }) {
+    return assignIn(state, personId, roomId, slotId);
+  },
+
+  unassign(state, { personId }) {
+    const p = personById(state, personId);
+    if (!p) return "";
+    removeAssignmentIn(state, personId);
+    return `${p.name} removed from their bed.`;
+  },
+
+  setRoomMode(state, { roomId, mode }) {
+    return changeRoomModeIn(state, roomId, mode);
+  },
+
+  suggest(state) {
+    return suggestIn(state);
+  },
+
+  resetAllocations(state) {
+    resetAllocationsIn(state);
+    return "All beds emptied.";
+  },
+
+  resetAll() {
+    return { replaceWith: initialState(), message: "Everything reset." };
+  },
+
+  replace(state, { plan }) {
+    return { replaceWith: normalizePlan(plan), message: "Plan imported." };
+  }
+};
+
+export const OP_NAMES = Object.keys(OPS);
+
+/**
+ * Apply one operation to a state, returning a brand new state.
+ * Never mutates `state`, so the server can safely retry against fresher data.
+ */
+export function applyOp(state, op) {
+  if (!op || typeof op !== "object") throw new PlanError("Missing operation.");
+  const handler = OPS[op.type];
+  if (!handler) throw new PlanError(`Unknown operation '${op.type}'.`);
+
+  const next = clone(state);
+  const result = handler(next, op.params || {});
+
+  if (result && typeof result === "object" && result.replaceWith) {
+    return { state: syncAssignments(result.replaceWith), message: result.message || "" };
+  }
+  return { state: syncAssignments(next), message: typeof result === "string" ? result : "" };
+}

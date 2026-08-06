@@ -1,0 +1,13 @@
+{
+  "name": "ski-trip-2027",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared room allocator for the Zermatt 2027 ski trip",
+  "scripts": {
+    "test": "node tests/plan-core.test.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.7.12"
+  }
+}
