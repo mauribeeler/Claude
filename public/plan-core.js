@@ -18,14 +18,26 @@ export const STARTING_PEOPLE = [
   "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley"
 ];
 
+/*
+ * `beds` applies to dorm-type rooms, whose size isn't implied by a layout.
+ * `autoFill: false` keeps a room out of Suggested Allocation — the Female
+ * Dormitory is a specific booking, not a bed the algorithm may hand to anyone.
+ */
 export const ROOM_BLUEPRINT = [
-  { id: "double1", name: "Double Room 1", type: "double", mode: "twin" },
-  { id: "double2", name: "Double Room 2", type: "double", mode: "twin" },
-  { id: "family",  name: "Family Room",   type: "family", mode: "fourSingles" },
-  { id: "dorm",    name: "Dormitory",     type: "dorm",   mode: "standard" }
+  { id: "double1",    name: "Double Room 1",    type: "double", mode: "twin" },
+  { id: "double2",    name: "Double Room 2",    type: "double", mode: "twin" },
+  { id: "family",     name: "Family Room",      type: "family", mode: "fourSingles" },
+  { id: "dorm",       name: "Dormitory",        type: "dorm",   mode: "standard", beds: 6 },
+  { id: "femaleDorm", name: "Female Dormitory", type: "dorm",   mode: "standard", beds: 1, autoFill: false }
 ];
 
-export const ROOM_CAPACITY = { double: 2, family: 4, dorm: 6 };
+/* Hannah booked directly into the female dormitory, so the plan starts with
+   her in it, pinned so Suggested Allocation leaves her alone. */
+const FEMALE_DORM_OCCUPANT = "Hannah";
+
+/* Default sizes only. Real capacity is always counted from a room's beds, so
+   two rooms of the same type can be different sizes. */
+export const DEFAULT_BEDS = { double: 2, family: 4, dorm: 6 };
 
 export const ROOM_MODES = {
   double: [
@@ -82,7 +94,7 @@ function makeSlot(type, label) {
   };
 }
 
-export function createSlotsForRoom(roomType, mode) {
+export function createSlotsForRoom(roomType, mode, beds) {
   if (roomType === "double") {
     return mode === "couple"
       ? [makeSlot("sharedDouble", "Double bed")]
@@ -93,7 +105,10 @@ export function createSlotsForRoom(roomType, mode) {
       ? [makeSlot("sharedDouble", "Double bed"), makeSlot("single", "Single bed 1"), makeSlot("single", "Single bed 2")]
       : [1, 2, 3, 4].map((i) => makeSlot("single", `Single bed ${i}`));
   }
-  return [1, 2, 3, 4, 5, 6].map((i) => makeSlot("single", `Bunk ${i}`));
+  // Dorms carry their own size, so a one-bed dorm is as valid as a six-bunk one.
+  const count = Math.max(1, Math.min(30, Number(beds) || DEFAULT_BEDS.dorm));
+  if (count === 1) return [makeSlot("single", "Bed")];
+  return Array.from({ length: count }, (_, i) => makeSlot("single", `Bunk ${i + 1}`));
 }
 
 export function defaultModeFor(roomType) {
@@ -107,8 +122,10 @@ export function validModesFor(roomType) {
   return list.length ? list.map((m) => m.value) : ["standard"];
 }
 
+/* Counted from the beds themselves, never looked up by type — that is what
+   lets the Female Dormitory hold one person while the Dormitory holds six. */
 export function roomCapacity(room) {
-  return ROOM_CAPACITY[room.type] ?? room.slots.reduce((n, s) => n + s.capacity, 0);
+  return room.slots.reduce((n, s) => n + s.capacity, 0);
 }
 
 export function roomOccupancy(room) {
@@ -116,19 +133,39 @@ export function roomOccupancy(room) {
 }
 
 export function makePerson(name) {
-  return { id: uid("p"), name, confirmed: false, note: "", pairWith: null, assignment: null };
+  return { id: uid("p"), name, confirmed: false, note: "", pairWith: null, pinned: false, assignment: null };
+}
+
+export function roomFromBlueprint(b) {
+  return {
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    mode: b.mode,
+    beds: b.beds ?? DEFAULT_BEDS[b.type],
+    autoFill: b.autoFill !== false,
+    slots: createSlotsForRoom(b.type, b.mode, b.beds)
+  };
 }
 
 export function initialState() {
-  return {
+  const state = {
     version: SCHEMA_VERSION,
     tripName: "Ski Trip 2027 — Zermatt",
     people: STARTING_PEOPLE.map(makePerson),
-    rooms: ROOM_BLUEPRINT.map((b) => ({
-      id: b.id, name: b.name, type: b.type, mode: b.mode,
-      slots: createSlotsForRoom(b.type, b.mode)
-    }))
+    rooms: ROOM_BLUEPRINT.map(roomFromBlueprint)
   };
+
+  // Hannah's female-dorm place is already booked, so it is part of the
+  // starting plan and pinned — Suggested Allocation must not move her.
+  const hannah = state.people.find((p) => p.name === FEMALE_DORM_OCCUPANT);
+  const femaleDorm = state.rooms.find((r) => r.id === "femaleDorm");
+  if (hannah && femaleDorm && femaleDorm.slots.length) {
+    femaleDorm.slots[0].occupants = [hannah.id];
+    hannah.pinned = true;
+  }
+
+  return syncAssignments(state);
 }
 
 /* --------------------------------------------------------------------------
@@ -196,7 +233,7 @@ export function getStats(state) {
   });
 
   const total = state.people.length;
-  const beds = state.rooms.reduce((n, r) => n + (ROOM_CAPACITY[r.type] || 0), 0);
+  const beds = state.rooms.reduce((n, r) => n + roomCapacity(r), 0);
   const occupied = state.rooms.reduce((n, r) => n + roomOccupancy(r), 0);
 
   return {
@@ -223,7 +260,7 @@ export function validateState(state) {
   const placements = new Map();
 
   state.rooms.forEach((room) => {
-    const cap = ROOM_CAPACITY[room.type] || 0;
+    const cap = roomCapacity(room);
     const occ = roomOccupancy(room);
 
     if (!validModesFor(room.type).includes(room.mode)) {
@@ -300,14 +337,19 @@ export function normalizePlan(data) {
       confirmed: raw.confirmed === true,
       note: typeof raw.note === "string" ? raw.note.slice(0, MAX_NOTE) : "",
       pairWith: typeof raw.pairWith === "string" ? raw.pairWith : null,
+      pinned: raw.pinned === true,
       assignment: null
     };
   });
 
   const rooms = data.rooms.map((raw, i) => {
     if (!raw || typeof raw !== "object") throw new PlanError(`Room #${i + 1} is not an object.`);
-    if (!ROOM_CAPACITY[raw.type]) throw new PlanError(`Room #${i + 1} has unknown type '${raw.type}'.`);
+    if (!DEFAULT_BEDS[raw.type]) throw new PlanError(`Room #${i + 1} has unknown type '${raw.type}'.`);
     const mode = validModesFor(raw.type).includes(raw.mode) ? raw.mode : defaultModeFor(raw.type);
+
+    const beds = Number.isFinite(Number(raw.beds)) && Number(raw.beds) > 0
+      ? Math.min(30, Math.round(Number(raw.beds)))
+      : DEFAULT_BEDS[raw.type];
 
     let slots;
     if (Array.isArray(raw.slots) && raw.slots.length) {
@@ -321,7 +363,7 @@ export function normalizePlan(data) {
         return slot;
       });
     } else {
-      slots = createSlotsForRoom(raw.type, mode);
+      slots = createSlotsForRoom(raw.type, mode, beds);
     }
 
     return {
@@ -329,6 +371,8 @@ export function normalizePlan(data) {
       name: typeof raw.name === "string" && raw.name ? raw.name.slice(0, 60) : `Room ${i + 1}`,
       type: raw.type,
       mode,
+      beds,
+      autoFill: raw.autoFill !== false,
       slots
     };
   });
@@ -396,7 +440,7 @@ function changeRoomModeIn(state, roomId, mode) {
     .filter((s) => s.occupants.length > 0)
     .map((s) => ({ shared: s.type === "sharedDouble" && s.occupants.length > 1, ids: s.occupants.slice() }));
 
-  const newSlots = createSlotsForRoom(room.type, mode);
+  const newSlots = createSlotsForRoom(room.type, mode, room.beds);
   const sharedTargets = newSlots.filter((s) => s.type === "sharedDouble");
   let loose = [];
 
@@ -430,13 +474,35 @@ function changeRoomModeIn(state, roomId, mode) {
   return "Layout changed. Assignments kept.";
 }
 
+/*
+ * Empty every bed and return rooms to their default layout — but a pinned
+ * person is a confirmed booking, not an allocation choice, so they are put
+ * straight back into the room they were in. Returns the ids it could not
+ * re-seat (their room is gone or full).
+ */
 function resetAllocationsIn(state) {
+  const pinned = state.people
+    .filter((p) => p.pinned && p.assignment)
+    .map((p) => ({ id: p.id, roomId: p.assignment.roomId }));
+
   state.rooms.forEach((room) => {
     const bp = ROOM_BLUEPRINT.find((b) => b.id === room.id);
     room.mode = bp ? bp.mode : defaultModeFor(room.type);
-    room.slots = createSlotsForRoom(room.type, room.mode);
+    room.slots = createSlotsForRoom(room.type, room.mode, room.beds ?? bp?.beds);
   });
   state.people.forEach((p) => { p.assignment = null; });
+
+  const lost = [];
+  pinned.forEach(({ id, roomId }) => {
+    const room = roomById(state, roomId);
+    // Slot ids are regenerated, so re-seat by room and take the first free bed.
+    const slot = room && room.slots.find((s) => s.occupants.length < s.capacity);
+    if (slot) slot.occupants.push(id);
+    else lost.push(id);
+  });
+
+  syncAssignments(state);
+  return lost;
 }
 
 /*
@@ -445,11 +511,13 @@ function resetAllocationsIn(state) {
  * are never put in the same bed, and capacity is never exceeded.
  */
 function suggestIn(state) {
-  resetAllocationsIn(state);
+  const lostPins = resetAllocationsIn(state);
 
+  // Pinned people keep the bed they were put back into and take no further
+  // part — their place is booked, not up for reallocation.
   const queue = [
-    ...state.people.filter((p) => p.confirmed),
-    ...state.people.filter((p) => !p.confirmed)
+    ...state.people.filter((p) => p.confirmed && !p.assignment),
+    ...state.people.filter((p) => !p.confirmed && !p.assignment)
   ];
 
   const taken = new Set();
@@ -460,7 +528,8 @@ function suggestIn(state) {
     if (taken.has(p.id)) return;
     if (p.pairWith) {
       const other = personById(state, p.pairWith);
-      if (other && !taken.has(other.id) && other.pairWith === p.id) {
+      // A partner who is pinned already has a bed and must not be re-seated.
+      if (other && !other.assignment && !taken.has(other.id) && other.pairWith === p.id) {
         taken.add(p.id); taken.add(other.id);
         pairs.push([p, other]);
         return;
@@ -470,24 +539,31 @@ function suggestIn(state) {
     singles.push(p);
   });
 
-  const doubles = state.rooms.filter((r) => r.type === "double");
-  const family = state.rooms.find((r) => r.type === "family");
-  const dorms = state.rooms.filter((r) => r.type === "dorm");
+  /* Rooms marked autoFill:false — the Female Dormitory — are specific
+     bookings and are never filled by the algorithm. They can still be used
+     manually. Rooms already holding a pinned person are left alone too, so
+     switching a layout can never eject a booked bed. */
+  const usable = state.rooms.filter((r) => r.autoFill !== false);
+  const isEmpty = (r) => roomOccupancy(r) === 0;
+  const doubles = usable.filter((r) => r.type === "double");
+  const family = usable.find((r) => r.type === "family");
+  const dorms = usable.filter((r) => r.type === "dorm");
   const usedDoubles = new Set();
 
   let pairIdx = 0;
   for (const room of doubles) {
     if (pairIdx >= pairs.length) break;
+    if (!isEmpty(room)) continue;
     room.mode = "couple";
-    room.slots = createSlotsForRoom(room.type, "couple");
+    room.slots = createSlotsForRoom(room.type, "couple", room.beds);
     room.slots[0].occupants = pairs[pairIdx].map((p) => p.id);
     usedDoubles.add(room.id);
     pairIdx += 1;
   }
 
-  if (pairIdx < pairs.length && family) {
+  if (pairIdx < pairs.length && family && isEmpty(family)) {
     family.mode = "doublePlusTwoSingles";
-    family.slots = createSlotsForRoom(family.type, "doublePlusTwoSingles");
+    family.slots = createSlotsForRoom(family.type, "doublePlusTwoSingles", family.beds);
     family.slots[0].occupants = pairs[pairIdx].map((p) => p.id);
     pairIdx += 1;
   }
@@ -520,9 +596,13 @@ function suggestIn(state) {
 
   const leftOut = singles.length - qi;
   const seated = state.people.filter((p) => p.assignment).length;
-  return leftOut > 0
-    ? `Allocated ${seated} people. ${leftOut} left without a bed — not enough beds.`
-    : `Allocated ${seated} people.`;
+  const parts = [`Allocated ${seated} people.`];
+  if (leftOut > 0) parts.push(`${leftOut} left without a bed — not enough beds.`);
+  if (lostPins.length) {
+    const names = lostPins.map((id) => personById(state, id)?.name ?? "?").join(", ");
+    parts.push(`Could not put ${names} back in their booked room.`);
+  }
+  return parts.join(" ");
 }
 
 /* --------------------------------------------------------------------------
@@ -605,8 +685,22 @@ const OPS = {
   },
 
   resetAllocations(state) {
-    resetAllocationsIn(state);
-    return "All beds emptied.";
+    const lost = resetAllocationsIn(state);
+    return lost.length
+      ? "All beds emptied. Booked places kept, except for those whose room no longer fits them."
+      : "All beds emptied. Booked places kept.";
+  },
+
+  /* Pin someone whose bed is already booked — Suggested Allocation and
+     Reset allocations both put them straight back rather than moving them. */
+  setPinned(state, { personId, pinned }) {
+    const p = personById(state, personId);
+    if (!p) throw new PlanError("That person is no longer on the trip.", 409);
+    p.pinned = pinned === true;
+    if (p.pinned && !p.assignment) {
+      throw new PlanError(`Give ${p.name} a bed before pinning it as booked.`);
+    }
+    return p.pinned ? `${p.name}'s bed is pinned as booked.` : `${p.name}'s bed is no longer pinned.`;
   },
 
   resetAll() {

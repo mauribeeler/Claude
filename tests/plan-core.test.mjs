@@ -11,7 +11,8 @@ import test from "node:test";
 
 import {
   initialState, applyOp, getStats, validateState, createSlotsForRoom,
-  personById, roomById, normalizePlan, syncAssignments, PlanError, clone
+  personById, roomById, normalizePlan, syncAssignments, PlanError, clone,
+  roomCapacity, roomOccupancy
 } from "../public/plan-core.js";
 
 import { handleRequest } from "../netlify/functions/plan.mjs";
@@ -64,23 +65,36 @@ const post = async (store, op, actor = "Tester", headers = {}) => {
    Model
    =========================================================================== */
 
-test("boots with the 15 given names, nobody confirmed or assigned", () => {
+test("boots with the 15 given names and the five rooms", () => {
   const s = initialState();
   assert.equal(s.people.length, 15);
   assert.equal(s.people[0].name, "Amelia");
   assert.equal(s.people.at(-1).name, "Huxley");
-  assert.ok(s.people.every((p) => !p.confirmed && p.assignment === null && p.note === ""));
-  assert.deepEqual(s.rooms.map((r) => r.mode), ["twin", "twin", "fourSingles", "standard"]);
-  assert.deepEqual(s.rooms.map((r) => r.slots.length), [2, 2, 4, 6]);
+  assert.ok(s.people.every((p) => !p.confirmed && p.note === ""));
+  assert.deepEqual(s.rooms.map((r) => r.name),
+    ["Double Room 1", "Double Room 2", "Family Room", "Dormitory", "Female Dormitory"]);
+  assert.deepEqual(s.rooms.map((r) => r.slots.length), [2, 2, 4, 6, 1]);
 });
 
-test("14 beds against 15 people is reported as an error, not hidden", () => {
+test("Hannah starts in the Female Dormitory, pinned, and nobody else is placed", () => {
+  const s = initialState();
+  const hannah = s.people.find((p) => p.name === "Hannah");
+  const femaleDorm = roomById(s, "femaleDorm");
+
+  assert.equal(femaleDorm.slots[0].occupants[0], hannah.id);
+  assert.equal(hannah.assignment.roomId, "femaleDorm");
+  assert.equal(hannah.pinned, true, "her booking is pinned, not an allocation choice");
+  assert.equal(roomCapacity(femaleDorm), 1, "a one-bed dorm, not the default six");
+  assert.equal(s.people.filter((p) => p.assignment).length, 1, "only Hannah is placed");
+});
+
+test("15 beds now matches 15 people, so the shortfall warning is gone", () => {
   const s = initialState();
   const stats = getStats(s);
-  assert.equal(stats.beds, 14);
+  assert.equal(stats.beds, 15, "2 + 2 + 4 + 6 + 1");
   assert.equal(stats.total, 15);
-  assert.equal(stats.overCapacityBy, 1);
-  assert.ok(validateState(s).some((i) => i.level === "error" && /nowhere to sleep/.test(i.text)));
+  assert.equal(stats.overCapacityBy, 0);
+  assert.equal(validateState(s).filter((i) => /nowhere to sleep/.test(i.text)).length, 0);
 });
 
 test("slot shapes follow room type and mode", () => {
@@ -177,16 +191,94 @@ test("confirmed people with no bed are flagged", () => {
   assert.ok(validateState(s).some((i) => i.level === "warn" && /no bed/.test(i.text)));
 });
 
-test("suggested allocation fills 14 and leaves the 15th out", () => {
+test("suggested allocation now seats everyone, with nobody left out", () => {
   let s = initialState();
   s.people.forEach((p) => { p.confirmed = true; });
   s = applyOp(s, { type: "suggest", params: {} }).state;
 
   const stats = getStats(s);
-  assert.equal(stats.assigned, 14);
+  assert.equal(stats.assigned, 15, "every one of the 15 gets a bed");
+  assert.equal(stats.confirmedUnassigned, 0);
   assert.ok(stats.occupied <= stats.beds);
-  assert.equal(validateState(s).filter((i) => i.level === "error" && !/nowhere to sleep/.test(i.text)).length, 0);
+  assert.equal(validateState(s).filter((i) => i.level === "error").length, 0);
   assert.ok(s.rooms.filter((r) => r.type === "double").every((r) => r.mode === "twin"), "no pairs means no couple rooms");
+});
+
+test("Suggested Allocation leaves Hannah in the female dorm and puts nobody else there", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  const hannahId = s.people.find((p) => p.name === "Hannah").id;
+
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+
+  const femaleDorm = roomById(s, "femaleDorm");
+  assert.deepEqual(femaleDorm.slots[0].occupants, [hannahId], "still hers, and hers alone");
+  assert.equal(personById(s, hannahId).assignment.roomId, "femaleDorm");
+});
+
+test("a room marked autoFill:false is never filled by the algorithm", () => {
+  let s = initialState();
+  // Free the female dorm, then allocate: it must stay empty rather than
+  // absorb whoever is left over.
+  const hannahId = s.people.find((p) => p.name === "Hannah").id;
+  s = applyOp(s, { type: "setPinned", params: { personId: hannahId, pinned: false } }).state;
+  s = applyOp(s, { type: "unassign", params: { personId: hannahId } }).state;
+  s.people.forEach((p) => { p.confirmed = true; });
+
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+
+  assert.equal(roomOccupancy(roomById(s, "femaleDorm")), 0, "left for a specific booking");
+  assert.equal(getStats(s).assigned, 14, "the other 14 beds are filled");
+});
+
+test("the female dorm can still be filled by hand", () => {
+  let s = initialState();
+  const hannahId = s.people.find((p) => p.name === "Hannah").id;
+  s = applyOp(s, { type: "setPinned", params: { personId: hannahId, pinned: false } }).state;
+  s = applyOp(s, { type: "unassign", params: { personId: hannahId } }).state;
+
+  const slotId = roomById(s, "femaleDorm").slots[0].id;
+  const amelia = s.people.find((p) => p.name === "Amelia");
+  s = applyOp(s, { type: "assign", params: { personId: amelia.id, roomId: "femaleDorm", slotId } }).state;
+  assert.deepEqual(roomById(s, "femaleDorm").slots[0].occupants, [amelia.id]);
+});
+
+test("the one-bed female dorm refuses a second person", () => {
+  const s = initialState();
+  const slotId = roomById(s, "femaleDorm").slots[0].id;
+  assert.throws(
+    () => applyOp(s, { type: "assign", params: { personId: s.people[0].id, roomId: "femaleDorm", slotId } }),
+    (e) => e instanceof PlanError && /taken|full/.test(e.message)
+  );
+});
+
+test("Reset allocations empties every bed but keeps booked places", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  assert.equal(getStats(s).assigned, 15);
+
+  s = applyOp(s, { type: "resetAllocations", params: {} }).state;
+  const hannah = s.people.find((p) => p.name === "Hannah");
+  assert.equal(getStats(s).assigned, 1, "only the pinned booking remains");
+  assert.equal(hannah.assignment.roomId, "femaleDorm");
+});
+
+test("unpinning lets a booking be cleared like any other", () => {
+  let s = initialState();
+  const hannahId = s.people.find((p) => p.name === "Hannah").id;
+  s = applyOp(s, { type: "setPinned", params: { personId: hannahId, pinned: false } }).state;
+  s = applyOp(s, { type: "resetAllocations", params: {} }).state;
+  assert.equal(getStats(s).assigned, 0);
+});
+
+test("pinning someone with no bed is refused with a clear reason", () => {
+  const s = initialState();
+  const huxley = s.people.find((p) => p.name === "Huxley");
+  assert.throws(
+    () => applyOp(s, { type: "setPinned", params: { personId: huxley.id, pinned: true } }),
+    (e) => e instanceof PlanError && /before pinning/.test(e.message)
+  );
 });
 
 test("suggested allocation seats pairs together and confirmed people first", () => {
@@ -205,26 +297,47 @@ test("suggested allocation seats pairs together and confirmed people first", () 
   assert.ok(together(P[0].id, P[1].id));
   assert.ok(together(P[2].id, P[3].id));
   assert.ok(s.people.filter((p) => p.confirmed).every((p) => p.assignment), "all confirmed seated before anyone else");
-  assert.equal(getStats(s).assigned, 14);
+  assert.equal(getStats(s).assigned, 15);
 });
 
 test("a third pair takes the family room double bed", () => {
   let s = initialState();
   const P = s.people;
-  for (let i = 0; i < 6; i++) P[i].confirmed = true;
-  for (let i = 0; i < 6; i += 2) { P[i].pairWith = P[i + 1].id; P[i + 1].pairWith = P[i].id; }
+  // Deliberately avoid Hannah (index 4): she is pinned in the female dorm and
+  // so cannot be half of a couple.
+  const couples = [[0, 1], [2, 3], [6, 7]];
+  couples.flat().forEach((i) => { P[i].confirmed = true; });
+  couples.forEach(([a, b]) => { P[a].pairWith = P[b].id; P[b].pairWith = P[a].id; });
 
   s = applyOp(s, { type: "suggest", params: {} }).state;
   assert.equal(roomById(s, "family").mode, "doublePlusTwoSingles");
-  assert.ok(roomById(s, "family").slots[0].occupants.includes(P[4].id));
-  assert.ok(getStats(s).occupied <= 14);
+  assert.ok(roomById(s, "family").slots[0].occupants.includes(P[6].id));
+  assert.ok(getStats(s).occupied <= 15);
+});
+
+test("a pinned person is never paired off into a double room", () => {
+  let s = initialState();
+  const hannah = s.people.find((p) => p.name === "Hannah");
+  const henry = s.people.find((p) => p.name === "Henry");
+  // Even if someone sets them as bed-sharers, Hannah's booking wins.
+  hannah.pairWith = henry.id;
+  henry.pairWith = hannah.id;
+  s.people.forEach((p) => { p.confirmed = true; });
+
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+
+  assert.equal(personById(s, hannah.id).assignment.roomId, "femaleDorm");
+  const sharing = s.rooms.some((r) => r.slots.some((sl) =>
+    sl.occupants.includes(hannah.id) && sl.occupants.includes(henry.id)));
+  assert.equal(sharing, false, "they are not put in a bed together");
+  assert.ok(personById(s, henry.id).assignment, "Henry still gets his own bed");
 });
 
 test("people can be added and removed", () => {
   let s = initialState();
   s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
   assert.equal(s.people.length, 16);
-  assert.equal(getStats(s).overCapacityBy, 2);
+  assert.equal(getStats(s).overCapacityBy, 1, "16 people against 15 beds");
 
   const bruno = s.people.at(-1);
   s = applyOp(s, { type: "assign", params: { personId: bruno.id, roomId: "dorm", slotId: roomById(s, "dorm").slots[0].id } }).state;

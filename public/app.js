@@ -369,7 +369,7 @@ function renderPeople() {
       <div class="person-top">
         <div class="person-id">
           <div class="person-name">${esc(p.name)}</div>
-          <div class="person-where${where ? "" : " none"}">${where ? esc(where) : "No bed assigned"}</div>
+          <div class="person-where${where ? "" : " none"}">${where ? esc(where) : "No bed assigned"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</div>
         </div>
         <button class="toggle" type="button" data-action="toggle-confirm" data-person="${esc(p.id)}" aria-pressed="${p.confirmed}">
           <span class="dot" aria-hidden="true"></span>${p.confirmed ? "Confirmed" : "Not confirmed"}
@@ -378,6 +378,7 @@ function renderPeople() {
       <div class="person-actions no-print">
         <button class="btn btn-sm" type="button" data-action="assign" data-person="${esc(p.id)}">${p.assignment ? "Move" : "Assign"}</button>
         ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${esc(p.id)}">Remove from bed</button>` : ""}
+        ${p.assignment ? `<button class="btn btn-sm${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${esc(p.id)}" aria-pressed="${!!p.pinned}" title="${p.pinned ? "Booked — allocation leaves this bed alone" : "Pin this bed as already booked"}">${p.pinned ? "📌 Booked" : "Pin as booked"}</button>` : ""}
         <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${esc(p.id)}">Delete</button>
         <span class="pair-row">
           <label for="pair_${esc(p.id)}">Shares bed with</label>
@@ -443,7 +444,7 @@ function renderRooms(issues) {
       <div class="room-head">
         <div class="room-title-row">
           <h3 class="room-title" id="rt_${esc(room.id)}">${esc(room.name)}</h3>
-          <div class="room-meta"><span class="pill pill-neutral">${occ} / ${cap}</span>${statusPill}</div>
+          <div class="room-meta">${room.autoFill === false ? '<span class="pill pill-neutral" title="Suggested Allocation never fills this room">Booked separately</span>' : ""}<span class="pill pill-neutral">${occ} / ${cap}</span>${statusPill}</div>
         </div>${modeHtml}
       </div>
       ${roomIssues.length ? `<p class="room-warn">⚠ ${esc(roomIssues[0].text)}</p>` : ""}
@@ -857,6 +858,12 @@ document.addEventListener("click", (ev) => {
     const p = personById(state, personId);
     if (!p) return;
     dispatch({ type: "setConfirmed", params: { personId, confirmed: !p.confirmed } });
+    return;
+  }
+  if (action === "toggle-pin") {
+    const p = personById(state, personId);
+    if (!p) return;
+    dispatch({ type: "setPinned", params: { personId, pinned: !p.pinned } });
     return;
   }
   if (action === "assign") { openAssignPicker(personId); return; }
