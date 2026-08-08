@@ -273,6 +273,25 @@ function relativeTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
+/* "Sun 31 Jan – Fri 5 Feb 2027 · 5 nights" */
+function formatDates(state) {
+  if (!state.startDate || !state.endDate) return "";
+  const a = new Date(state.startDate + "T00:00:00");
+  const b = new Date(state.endDate + "T00:00:00");
+  if (Number.isNaN(a) || Number.isNaN(b)) return "";
+  const day = (d) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  const nights = Math.round((b - a) / 86400000);
+  return `${day(a)} – ${day(b)} ${b.getFullYear()} · ${nights} night${nights === 1 ? "" : "s"}`;
+}
+
+function renderDates() {
+  const node = document.getElementById("trip-dates");
+  if (!node) return;
+  const text = formatDates(state);
+  node.textContent = text;
+  node.hidden = !text;
+}
+
 function renderSyncBar() {
   const dot = el.syncDot;
   if (inFlight > 0) {
@@ -454,6 +473,7 @@ function renderRooms(issues) {
           <div class="room-meta">${room.autoFill === false ? '<span class="pill pill-neutral" title="Suggested Allocation never fills this room">Booked separately</span>' : ""}<span class="pill pill-neutral">${occ} / ${cap}</span>${statusPill}</div>
         </div>${modeHtml}
       </div>
+      <div class="room-mode no-print"><button class="btn btn-sm" type="button" data-action="edit-room" data-room="${esc(room.id)}">Edit room</button></div>
       ${roomIssues.length ? `<p class="room-warn">⚠ ${esc(roomIssues[0].text)}</p>` : ""}
       <ul class="slots">${slotsHtml}</ul>
     </article>`;
@@ -490,6 +510,7 @@ function render() {
   const issues = validateState(state);
 
   renderSyncBar();
+  renderDates();
   renderStats(stats);
   renderAlerts(issues);
 
@@ -745,6 +766,91 @@ function openSlotPicker(roomId, slotId) {
   });
 }
 
+function openAddRoom() {
+  openModal({
+    title: "Add a room",
+    bodyHtml:
+      `<p class="modal-note">Add a room you have actually booked. It counts towards the beds straight away.</p>
+       <div class="field"><label for="new-room-name">Room name</label>
+         <input class="input" id="new-room-name" type="text" maxlength="60" placeholder="e.g. Twin Room 3"></div>
+       <div class="field"><label for="new-room-type">Type</label>
+         <select class="input" id="new-room-type">
+           <option value="double">Double — 2 beds (twin or one double)</option>
+           <option value="family">Family — 4 beds</option>
+           <option value="dorm">Dormitory — choose how many beds</option>
+         </select></div>
+       <div class="field" id="beds-field" hidden><label for="new-room-beds">How many beds</label>
+         <input class="input" id="new-room-beds" type="number" min="1" max="30" value="6"></div>
+       <p class="modal-note" id="add-room-msg"></p>`,
+    buttons: [
+      { label: "Cancel", onClick: closeModal },
+      { label: "Add room", variant: "btn-primary", onClick: () => {
+          const name = document.getElementById("new-room-name").value.trim();
+          const type = document.getElementById("new-room-type").value;
+          const beds = Number(document.getElementById("new-room-beds").value);
+          const msg = document.getElementById("add-room-msg");
+          if (!name) { msg.textContent = "Give the room a name."; msg.style.color = "var(--err)"; return; }
+          closeModal();
+          dispatch({ type: "addRoom", params: { name, type, beds } }, { optimistic: false });
+        } }
+    ]
+  });
+  const typeSel = document.getElementById("new-room-type");
+  const bedsField = document.getElementById("beds-field");
+  const sync = () => { bedsField.hidden = typeSel.value !== "dorm"; };
+  typeSel.addEventListener("change", sync);
+  sync();
+}
+
+function openRoomEditor(roomId) {
+  const room = roomById(state, roomId);
+  if (!room) return;
+  const occ = roomOccupancy(room);
+
+  openModal({
+    title: `Edit ${room.name}`,
+    bodyHtml:
+      `<div class="field"><label for="room-name">Room name</label>
+         <input class="input" id="room-name" type="text" maxlength="60" value="${esc(room.name)}"></div>
+       ${room.type === "dorm"
+          ? `<div class="field"><label for="room-beds">How many beds</label>
+               <input class="input" id="room-beds" type="number" min="1" max="30" value="${roomCapacity(room)}"></div>`
+          : `<p class="modal-note">This room's size comes from its layout, set on the room card.</p>`}
+       <div class="field">
+         <label for="room-autofill">Used by Suggested Allocation</label>
+         <select class="input" id="room-autofill">
+           <option value="yes"${room.autoFill !== false ? " selected" : ""}>Yes — fill it automatically</option>
+           <option value="no"${room.autoFill === false ? " selected" : ""}>No — booked separately</option>
+         </select>
+       </div>
+       <p class="modal-note">${occ ? `${occ} ${occ === 1 ? "person is" : "people are"} in this room. Deleting it leaves them without a bed.` : "This room is empty."}</p>`,
+    buttons: [
+      { label: "Delete room", variant: "btn-danger", onClick: () => {
+          closeModal();
+          confirmDialog(`Delete ${room.name}?`,
+            occ ? `${occ} ${occ === 1 ? "person" : "people"} will lose their bed. This cannot be undone.`
+                : "This cannot be undone.",
+            "Delete room",
+            () => dispatch({ type: "removeRoom", params: { roomId } }, { optimistic: false }));
+        } },
+      { label: "Cancel", onClick: closeModal },
+      { label: "Save", variant: "btn-primary", onClick: () => {
+          const name = document.getElementById("room-name").value.trim();
+          const bedsInput = document.getElementById("room-beds");
+          const autoFill = document.getElementById("room-autofill").value === "yes";
+          closeModal();
+          if (name && name !== room.name) dispatch({ type: "renameRoom", params: { roomId, name } }, { optimistic: false });
+          if (bedsInput && Number(bedsInput.value) !== roomCapacity(room)) {
+            dispatch({ type: "setRoomBeds", params: { roomId, beds: Number(bedsInput.value) } }, { optimistic: false });
+          }
+          if (autoFill !== (room.autoFill !== false)) {
+            dispatch({ type: "setRoomAutoFill", params: { roomId, autoFill } }, { optimistic: false });
+          }
+        } }
+    ]
+  });
+}
+
 /* ===============================================================
    8. IMPORT / EXPORT
    =============================================================== */
@@ -873,6 +979,7 @@ document.addEventListener("click", (ev) => {
     dispatch({ type: "setPinned", params: { personId, pinned: !p.pinned } });
     return;
   }
+  if (action === "edit-room") { openRoomEditor(roomId); return; }
   if (action === "assign") { openAssignPicker(personId); return; }
   if (action === "unassign") { dispatch({ type: "unassign", params: { personId } }); return; }
   if (action === "fill-slot") { openSlotPicker(roomId, slotId); return; }
@@ -946,6 +1053,7 @@ document.getElementById("btn-suggest").addEventListener("click", () => {
   );
 });
 
+document.getElementById("btn-add-room").addEventListener("click", openAddRoom);
 document.getElementById("btn-export").addEventListener("click", openExport);
 document.getElementById("btn-import").addEventListener("click", openImport);
 document.getElementById("btn-print").addEventListener("click", () => window.print());

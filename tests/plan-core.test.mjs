@@ -65,11 +65,11 @@ const post = async (store, op, actor = "Tester", headers = {}) => {
    Model
    =========================================================================== */
 
-test("boots with the 15 given names and the five rooms", () => {
+test("boots with the 16 names and the five rooms", () => {
   const s = initialState();
-  assert.equal(s.people.length, 15);
+  assert.equal(s.people.length, 16);
   assert.equal(s.people[0].name, "Amelia");
-  assert.equal(s.people.at(-1).name, "Huxley");
+  assert.equal(s.people.at(-1).name, "Mauricio");
   assert.ok(s.people.every((p) => !p.confirmed && p.note === ""));
   assert.deepEqual(s.rooms.map((r) => r.name),
     ["Double Room 1", "Double Room 2", "Family Room", "Dormitory", "Female Dormitory"]);
@@ -88,13 +88,121 @@ test("Hannah starts in the Female Dormitory, pinned, and nobody else is placed",
   assert.equal(s.people.filter((p) => p.assignment).length, 1, "only Hannah is placed");
 });
 
-test("15 beds now matches 15 people, so the shortfall warning is gone", () => {
+test("16 people against 15 beds is flagged — one more bed is needed", () => {
   const s = initialState();
   const stats = getStats(s);
   assert.equal(stats.beds, 15, "2 + 2 + 4 + 6 + 1");
-  assert.equal(stats.total, 15);
-  assert.equal(stats.overCapacityBy, 0);
+  assert.equal(stats.total, 16);
+  assert.equal(stats.overCapacityBy, 1);
+  assert.ok(validateState(s).some((i) => i.level === "error" && /nowhere to sleep/.test(i.text)));
+});
+
+test("the trip runs 31 Jan to 5 Feb 2027", () => {
+  const s = initialState();
+  assert.equal(s.startDate, "2027-01-31");
+  assert.equal(s.endDate, "2027-02-05");
+  const nights = Math.round((Date.parse(s.endDate) - Date.parse(s.startDate)) / 86400000);
+  assert.equal(nights, 5);
+});
+
+test("trip dates can be changed, and nonsense is refused", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "setTripDates", params: { startDate: "2027-02-01", endDate: "2027-02-07" } }).state;
+  assert.equal(s.startDate, "2027-02-01");
+  for (const bad of [{ startDate: "31/01/2027", endDate: "2027-02-05" },
+                     { startDate: "2027-02-05", endDate: "2027-01-31" },
+                     { startDate: "2027-02-05", endDate: "2027-02-05" }]) {
+    assert.throws(() => applyOp(s, { type: "setTripDates", params: bad }), PlanError);
+  }
+});
+
+test("adding a room adds beds and clears the shortfall", () => {
+  let s = initialState();
+  assert.equal(getStats(s).overCapacityBy, 1);
+  s = applyOp(s, { type: "addRoom", params: { name: "Twin Room 3", type: "double" } }).state;
+  assert.equal(s.rooms.length, 6);
+  assert.equal(getStats(s).beds, 17);
+  assert.equal(getStats(s).overCapacityBy, 0, "16 people now have somewhere to sleep");
   assert.equal(validateState(s).filter((i) => /nowhere to sleep/.test(i.text)).length, 0);
+});
+
+test("a new room is used by Suggested Allocation", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addRoom", params: { name: "Single Room", type: "dorm", beds: 1 } }).state;
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  assert.equal(getStats(s).assigned, 16, "everyone including Mauricio gets a bed");
+  assert.equal(getStats(s).confirmedUnassigned, 0);
+});
+
+test("a dorm can be resized, keeping whoever fits", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  const dorm = roomById(s, "dorm");
+  assert.equal(roomOccupancy(dorm), 6);
+
+  s = applyOp(s, { type: "setRoomBeds", params: { roomId: "dorm", beds: 7 } }).state;
+  assert.equal(roomCapacity(roomById(s, "dorm")), 7);
+  assert.equal(roomOccupancy(roomById(s, "dorm")), 6, "nobody displaced by growing it");
+  assert.equal(getStats(s).beds, 16);
+});
+
+test("shrinking a dorm keeps the people visible rather than dropping them", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  const before = roomOccupancy(roomById(s, "dorm"));
+
+  const out = applyOp(s, { type: "setRoomBeds", params: { roomId: "dorm", beds: 2 } });
+  s = out.state;
+  assert.equal(roomOccupancy(roomById(s, "dorm")), before, "everyone is still accounted for");
+  assert.match(out.message, /no longer fit/);
+  assert.ok(validateState(s).some((i) => i.level === "error"), "and it is flagged as over capacity");
+});
+
+test("only dorms take a bed count", () => {
+  const s = initialState();
+  assert.throws(() => applyOp(s, { type: "setRoomBeds", params: { roomId: "double1", beds: 3 } }), PlanError);
+});
+
+test("removing a room frees its occupants rather than losing them", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  const before = getStats(s).assigned;
+
+  const out = applyOp(s, { type: "removeRoom", params: { roomId: "dorm" } });
+  s = out.state;
+  assert.equal(s.rooms.length, 4);
+  assert.equal(getStats(s).assigned, before - 6);
+  assert.match(out.message, /need a new bed/);
+  assert.equal(validateState(s).filter((i) => /two beds|beds at once/.test(i.text)).length, 0);
+});
+
+test("rooms can be renamed and taken out of auto-fill", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "renameRoom", params: { roomId: "dorm", name: "Boys' Bunk Room" } }).state;
+  assert.equal(roomById(s, "dorm").name, "Boys' Bunk Room");
+
+  s = applyOp(s, { type: "setRoomAutoFill", params: { roomId: "dorm", autoFill: false } }).state;
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  assert.equal(roomOccupancy(roomById(s, "dorm")), 0, "excluded room stays empty");
+});
+
+test("dates and room settings survive an export/import round trip", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addRoom", params: { name: "Attic Twin", type: "dorm", beds: 2 } }).state;
+  s = applyOp(s, { type: "setTripDates", params: { startDate: "2027-01-30", endDate: "2027-02-06" } }).state;
+
+  const back = normalizePlan(JSON.parse(JSON.stringify(s)));
+  assert.equal(back.startDate, "2027-01-30");
+  assert.equal(back.endDate, "2027-02-06");
+  assert.equal(back.rooms.length, 6);
+  assert.equal(back.rooms.find((r) => r.name === "Attic Twin").slots.length, 2);
+  assert.equal(back.rooms.find((r) => r.id === "femaleDorm").autoFill, false);
+  assert.equal(back.people.find((p) => p.name === "Hannah").pinned, true);
 });
 
 test("slot shapes follow room type and mode", () => {
@@ -191,16 +299,16 @@ test("confirmed people with no bed are flagged", () => {
   assert.ok(validateState(s).some((i) => i.level === "warn" && /no bed/.test(i.text)));
 });
 
-test("suggested allocation now seats everyone, with nobody left out", () => {
+test("suggested allocation fills all 15 beds, leaving one of the 16 out", () => {
   let s = initialState();
   s.people.forEach((p) => { p.confirmed = true; });
   s = applyOp(s, { type: "suggest", params: {} }).state;
 
   const stats = getStats(s);
-  assert.equal(stats.assigned, 15, "every one of the 15 gets a bed");
-  assert.equal(stats.confirmedUnassigned, 0);
+  assert.equal(stats.assigned, 15, "every bed used");
+  assert.equal(stats.confirmedUnassigned, 1, "one person still needs a bed booking");
   assert.ok(stats.occupied <= stats.beds);
-  assert.equal(validateState(s).filter((i) => i.level === "error").length, 0);
+  assert.equal(validateState(s).filter((i) => i.level === "error" && !/nowhere to sleep/.test(i.text)).length, 0);
   assert.ok(s.rooms.filter((r) => r.type === "double").every((r) => r.mode === "twin"), "no pairs means no couple rooms");
 });
 
@@ -336,14 +444,14 @@ test("a pinned person is never paired off into a double room", () => {
 test("people can be added and removed", () => {
   let s = initialState();
   s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
-  assert.equal(s.people.length, 16);
-  assert.equal(getStats(s).overCapacityBy, 1, "16 people against 15 beds");
+  assert.equal(s.people.length, 17);
+  assert.equal(getStats(s).overCapacityBy, 2, "17 people against 15 beds");
 
   const bruno = s.people.at(-1);
   s = applyOp(s, { type: "assign", params: { personId: bruno.id, roomId: "dorm", slotId: roomById(s, "dorm").slots[0].id } }).state;
   s = applyOp(s, { type: "deletePerson", params: { personId: bruno.id } }).state;
 
-  assert.equal(s.people.length, 15);
+  assert.equal(s.people.length, 16);
   assert.equal(roomById(s, "dorm").slots[0].occupants.length, 0, "deleting frees their bed");
 });
 
@@ -406,7 +514,7 @@ test("unknown operations are refused", () => {
 test("GET seeds the plan once, so everyone sees the same person ids", async () => {
   const store = fakeStore();
   const first = await (await handleRequest(req("GET"), store)).json();
-  assert.equal(first.state.people.length, 15);
+  assert.equal(first.state.people.length, 16);
   assert.ok(first.etag, "the seed is persisted, not just returned");
 
   // A second visitor must get the SAME ids, or their first edit would be
@@ -603,6 +711,6 @@ test("a malformed import is refused before it touches the stored plan", async ()
   assert.equal(res.status, 400);
 
   const final = await (await handleRequest(req("GET"), store)).json();
-  assert.equal(final.state.people.length, 15, "stored plan untouched");
+  assert.equal(final.state.people.length, 16, "stored plan untouched");
   assert.equal(final.state.people[0].confirmed, true);
 });

@@ -352,6 +352,11 @@ textarea.input{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-
 /* ---------------------------------------------------------------
    10. Room cards
 --------------------------------------------------------------- */
+.rooms-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin:0 2px 12px;
+}
+.rooms-head h2{font-size:16px;font-weight:640}
 .rooms{display:grid;gap:16px}
 .room{
   background:var(--surface);border:1px solid var(--line);
@@ -534,7 +539,7 @@ input[type="file"]{font-size:13px;max-width:100%}
   .wrap{max-width:none;padding:0}
   .toolbar,.people-controls,.person-actions,.pair-row,.room-mode,
   .chip .x,.backdrop,.toast,details.help,.meter,.close-x,
-  .btn,.tabs,.add-person,.syncbar,.no-print{display:none !important}
+  .btn,.tabs,.add-person,.syncbar,.rooms-head,.no-print{display:none !important}
   .card,.room,.stat{border:1px solid #bbb;box-shadow:none;break-inside:avoid}
   .card-head{border-bottom:1px solid #bbb}
   .columns{display:block}
@@ -561,6 +566,7 @@ input[type="file"]{font-size:13px;max-width:100%}
   <header class="masthead">
     <p class="eyebrow">Zermatt · Switzerland</p>
     <h1>Ski Trip 2027 — Who Sleeps Where</h1>
+    <p class="sub" id="trip-dates"></p>
     <p class="sub">Track confirmations, assign beds, spot problems before they become arguments at 11pm.</p>
   </header>
 
@@ -625,7 +631,10 @@ input[type="file"]{font-size:13px;max-width:100%}
     </section>
 
     <section aria-labelledby="rooms-h">
-      <h2 id="rooms-h" class="sr-only">Rooms</h2>
+      <div class="rooms-head no-print">
+        <h2 id="rooms-h">Accommodation</h2>
+        <button class="btn btn-sm" type="button" id="btn-add-room">+ Add room</button>
+      </div>
       <div class="rooms" id="rooms"></div>
     </section>
 

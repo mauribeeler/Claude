@@ -15,8 +15,12 @@ export const SCHEMA_VERSION = 2;
 
 export const STARTING_PEOPLE = [
   "Amelia", "Charles", "Courtney", "Graham", "Hannah", "Henry", "JJ", "Joel",
-  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley"
+  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley", "Mauricio"
 ];
+
+/* Zermatt, Sunday 31 Jan to Friday 5 Feb 2027 — five nights. */
+export const TRIP_START = "2027-01-31";
+export const TRIP_END = "2027-02-05";
 
 /*
  * `beds` applies to dorm-type rooms, whose size isn't implied by a layout.
@@ -152,6 +156,8 @@ export function initialState() {
   const state = {
     version: SCHEMA_VERSION,
     tripName: "Ski Trip 2027 — Zermatt",
+    startDate: TRIP_START,
+    endDate: TRIP_END,
     people: STARTING_PEOPLE.map(makePerson),
     rooms: ROOM_BLUEPRINT.map(roomFromBlueprint)
   };
@@ -379,9 +385,13 @@ export function normalizePlan(data) {
 
   if (!rooms.length) throw new PlanError("A plan needs at least one room.");
 
+  const validDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
+
   return syncAssignments({
     version: SCHEMA_VERSION,
     tripName: typeof data.tripName === "string" && data.tripName ? data.tripName : "Ski Trip 2027 — Zermatt",
+    startDate: validDate(data.startDate) ? data.startDate : TRIP_START,
+    endDate: validDate(data.endDate) ? data.endDate : TRIP_END,
     people,
     rooms
   });
@@ -425,22 +435,12 @@ function assignIn(state, personId, roomId, slotId) {
 }
 
 /*
- * Layout changes keep everyone who was in the room. Existing couples stay in a
- * shared double where the new layout has one; anyone who genuinely cannot be
- * re-seated is parked in the last bed so it shows up as an over-capacity
- * warning the organiser can resolve, rather than vanishing.
+ * Move a room's occupants into a freshly generated set of beds, keeping
+ * couples together where a shared double exists. Anyone who cannot be seated
+ * is parked in the last bed so they stay visible (and trip the over-capacity
+ * warning) rather than silently vanishing. Returns those ids.
  */
-function changeRoomModeIn(state, roomId, mode) {
-  const room = roomById(state, roomId);
-  if (!room) throw new PlanError("Room not found.", 409);
-  if (!validModesFor(room.type).includes(mode)) throw new PlanError("Unsupported layout.");
-  if (room.mode === mode) return "";
-
-  const groups = room.slots
-    .filter((s) => s.occupants.length > 0)
-    .map((s) => ({ shared: s.type === "sharedDouble" && s.occupants.length > 1, ids: s.occupants.slice() }));
-
-  const newSlots = createSlotsForRoom(room.type, mode, room.beds);
+function reseatInto(room, groups, newSlots) {
   const sharedTargets = newSlots.filter((s) => s.type === "sharedDouble");
   let loose = [];
 
@@ -463,8 +463,33 @@ function changeRoomModeIn(state, roomId, mode) {
     newSlots[newSlots.length - 1].occupants.push(...unseated);
   }
 
-  room.mode = mode;
   room.slots = newSlots;
+  return unseated;
+}
+
+function occupantGroups(room) {
+  return room.slots
+    .filter((s) => s.occupants.length > 0)
+    .map((s) => ({ shared: s.type === "sharedDouble" && s.occupants.length > 1, ids: s.occupants.slice() }));
+}
+
+/*
+ * Layout changes keep everyone who was in the room. Existing couples stay in a
+ * shared double where the new layout has one; anyone who genuinely cannot be
+ * re-seated is parked in the last bed so it shows up as an over-capacity
+ * warning the organiser can resolve, rather than vanishing.
+ */
+function changeRoomModeIn(state, roomId, mode) {
+  const room = roomById(state, roomId);
+  if (!room) throw new PlanError("Room not found.", 409);
+  if (!validModesFor(room.type).includes(mode)) throw new PlanError("Unsupported layout.");
+  if (room.mode === mode) return "";
+
+  const groups = occupantGroups(room);
+  const newSlots = createSlotsForRoom(room.type, mode, room.beds);
+  const unseated = reseatInto(room, groups, newSlots);
+
+  room.mode = mode;
   syncAssignments(state);
 
   if (unseated.length) {
@@ -689,6 +714,95 @@ const OPS = {
     return lost.length
       ? "All beds emptied. Booked places kept, except for those whose room no longer fits them."
       : "All beds emptied. Booked places kept.";
+  },
+
+  /* --- accommodation ---------------------------------------------------
+     Rooms are data, not code: book a room, add it here, and the allocation
+     picks it up. */
+
+  addRoom(state, { name, type, beds, autoFill }) {
+    const clean = String(name ?? "").trim().slice(0, 60);
+    if (!clean) throw new PlanError("The room needs a name.");
+    if (!DEFAULT_BEDS[type]) throw new PlanError(`'${type}' is not a room type.`);
+    if (state.rooms.length >= 20) throw new PlanError("That's as many rooms as this plan holds.");
+
+    const mode = defaultModeFor(type);
+    const size = type === "dorm"
+      ? Math.max(1, Math.min(30, Math.round(Number(beds)) || DEFAULT_BEDS.dorm))
+      : DEFAULT_BEDS[type];
+
+    state.rooms.push({
+      id: uid("r"),
+      name: clean,
+      type,
+      mode,
+      beds: size,
+      autoFill: autoFill !== false,
+      slots: createSlotsForRoom(type, mode, size)
+    });
+    return `${clean} added — ${size} bed${size === 1 ? "" : "s"}.`;
+  },
+
+  renameRoom(state, { roomId, name }) {
+    const room = roomById(state, roomId);
+    if (!room) throw new PlanError("That room no longer exists.", 409);
+    const clean = String(name ?? "").trim().slice(0, 60);
+    if (!clean) throw new PlanError("The room needs a name.");
+    room.name = clean;
+    return "";
+  },
+
+  /* Change how many beds a dorm has. Occupants are re-seated, and anyone who
+     no longer fits is parked visibly rather than dropped. */
+  setRoomBeds(state, { roomId, beds }) {
+    const room = roomById(state, roomId);
+    if (!room) throw new PlanError("That room no longer exists.", 409);
+    if (room.type !== "dorm") throw new PlanError(`${room.name}'s size is set by its layout, not a bed count.`);
+
+    const size = Math.max(1, Math.min(30, Math.round(Number(beds))));
+    if (!Number.isFinite(size)) throw new PlanError("That isn't a number of beds.");
+    if (size === roomCapacity(room)) return "";
+
+    const groups = occupantGroups(room);
+    room.beds = size;
+    const unseated = reseatInto(room, groups, createSlotsForRoom(room.type, room.mode, size));
+    syncAssignments(state);
+
+    if (unseated.length) {
+      const names = unseated.map((id) => personById(state, id)?.name ?? "?").join(", ");
+      return `${room.name} now has ${size} bed${size === 1 ? "" : "s"}, but ${names} no longer fit — move them.`;
+    }
+    return `${room.name} now has ${size} bed${size === 1 ? "" : "s"}.`;
+  },
+
+  setRoomAutoFill(state, { roomId, autoFill }) {
+    const room = roomById(state, roomId);
+    if (!room) throw new PlanError("That room no longer exists.", 409);
+    room.autoFill = autoFill !== false;
+    return room.autoFill
+      ? `${room.name} will be used by Suggested Allocation.`
+      : `${room.name} is booked separately and won't be filled automatically.`;
+  },
+
+  removeRoom(state, { roomId }) {
+    const room = roomById(state, roomId);
+    if (!room) return "";
+    if (state.rooms.length <= 1) throw new PlanError("A plan needs at least one room.");
+    const displaced = room.slots.flatMap((sl) => sl.occupants);
+    state.rooms = state.rooms.filter((r) => r.id !== roomId);
+    syncAssignments(state);
+    return displaced.length
+      ? `${room.name} removed — ${displaced.length} ${displaced.length === 1 ? "person needs" : "people need"} a new bed.`
+      : `${room.name} removed.`;
+  },
+
+  setTripDates(state, { startDate, endDate }) {
+    const valid = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
+    if (!valid(startDate) || !valid(endDate)) throw new PlanError("Dates must look like 2027-01-31.");
+    if (Date.parse(endDate) <= Date.parse(startDate)) throw new PlanError("The end date must be after the start date.");
+    state.startDate = startDate;
+    state.endDate = endDate;
+    return "Trip dates updated.";
   },
 
   /* Pin someone whose bed is already booked — Suggested Allocation and
