@@ -1,5 +1,5 @@
 import {
-  applyOp, initialState, getStats, validateState, syncAssignments, normalizePlan,
+  applyOp, initialState, getStats, validateState, syncAssignments,
   personById, roomById, slotById, assignmentLabel, roomCapacity, roomOccupancy,
   ROOM_MODES, PlanError, clone
 } from "./plan-core.js";
@@ -852,105 +852,6 @@ function openRoomEditor(roomId) {
 }
 
 /* ===============================================================
-   8. IMPORT / EXPORT
-   =============================================================== */
-
-function exportPlan() {
-  return { version: state.version, tripName: state.tripName, exportedAt: new Date().toISOString(), people: state.people, rooms: state.rooms };
-}
-
-function download(filename, text) {
-  try {
-    const blob = new Blob([text], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return true;
-  } catch { return false; }
-}
-
-function openExport() {
-  const jsonText = JSON.stringify(exportPlan(), null, 2);
-  openModal({
-    title: "Export plan",
-    bodyHtml:
-      `<p class="modal-note">The complete current plan — people, statuses, notes and every bed. Copy it, or download the file.</p>
-       <label class="sr-only" for="export-json">Plan JSON</label>
-       <textarea class="input" id="export-json" readonly spellcheck="false">${esc(jsonText)}</textarea>`,
-    buttons: [
-      { label: "Copy", onClick: () => {
-          const ta = document.getElementById("export-json");
-          ta.focus(); ta.select();
-          let done = false;
-          try { done = document.execCommand("copy"); } catch { done = false; }
-          if (!done && navigator.clipboard) {
-            navigator.clipboard.writeText(jsonText).then(
-              () => toast("Copied to clipboard."),
-              () => toast("Copy failed — select the text and copy manually.")
-            );
-            return;
-          }
-          toast(done ? "Copied to clipboard." : "Select the text and copy manually.");
-        } },
-      { label: "Download .json", onClick: () => {
-          toast(download("ski-trip-2027-plan.json", jsonText) ? "File downloaded." : "Download blocked here — copy the text instead.");
-        } },
-      { label: "Close", onClick: closeModal }
-    ]
-  });
-}
-
-function openImport() {
-  openModal({
-    title: "Import plan",
-    bodyHtml:
-      `<p class="modal-note">Paste an exported plan, or choose a .json file. ${syncMode === "shared" ? "<strong>This replaces the shared plan for everyone.</strong>" : "This replaces everything currently on screen."}</p>
-       <div class="file-row"><label for="import-file">Load a file:</label><input type="file" id="import-file" accept="application/json,.json"></div>
-       <label class="sr-only" for="import-json">Plan JSON</label>
-       <textarea class="input" id="import-json" spellcheck="false" placeholder="{ &quot;people&quot;: [...], &quot;rooms&quot;: [...] }"></textarea>
-       <p class="modal-note" id="import-msg"></p>`,
-    buttons: [
-      { label: "Cancel", onClick: closeModal },
-      { label: "Import", variant: "btn-primary", onClick: () => {
-          const msg = document.getElementById("import-msg");
-          const raw = document.getElementById("import-json").value.trim();
-          if (!raw) { msg.textContent = "Nothing to import yet."; msg.style.color = "var(--err)"; return; }
-          let parsed;
-          try { parsed = JSON.parse(raw); }
-          catch (e) { msg.textContent = `That isn't valid JSON: ${e.message}`; msg.style.color = "var(--err)"; return; }
-          try { normalizePlan(parsed); }
-          catch (e) { msg.textContent = `Could not import: ${e.message}`; msg.style.color = "var(--err)"; return; }
-          closeModal();
-          dispatch({ type: "replace", params: { plan: parsed } }, { optimistic: false });
-        } }
-    ]
-  });
-
-  const fileInput = document.getElementById("import-file");
-  fileInput.addEventListener("change", () => {
-    const f = fileInput.files && fileInput.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      document.getElementById("import-json").value = String(reader.result || "");
-      const msg = document.getElementById("import-msg");
-      msg.textContent = `Loaded ${f.name}. Press Import to apply.`;
-      msg.style.color = "var(--text-dim)";
-    };
-    reader.onerror = () => {
-      const msg = document.getElementById("import-msg");
-      msg.textContent = "Could not read that file.";
-      msg.style.color = "var(--err)";
-    };
-    reader.readAsText(f);
-  });
-}
-
-/* ===============================================================
    9. EVENT HANDLERS
    =============================================================== */
 
@@ -1054,32 +955,7 @@ document.getElementById("btn-suggest").addEventListener("click", () => {
 });
 
 document.getElementById("btn-add-room").addEventListener("click", openAddRoom);
-document.getElementById("btn-export").addEventListener("click", openExport);
-document.getElementById("btn-import").addEventListener("click", openImport);
 document.getElementById("btn-print").addEventListener("click", () => window.print());
-
-document.getElementById("btn-reset-alloc").addEventListener("click", () => {
-  confirmDialog(
-    "Reset all bed allocations?",
-    `Everyone stays on the list with their status and notes. Every bed is emptied and room layouts go back to their defaults${syncMode === "shared" ? ", for everyone" : ""}.`,
-    "Reset allocations",
-    () => dispatch({ type: "resetAllocations", params: {} }, { optimistic: false })
-  );
-});
-
-document.getElementById("btn-reset-all").addEventListener("click", () => {
-  confirmDialog(
-    "Reset everything?",
-    `Back to the original 15 names, nobody confirmed, no notes, no beds assigned${syncMode === "shared" ? ". This wipes the shared plan for everyone" : ""}. Anyone added is removed.`,
-    "Reset all",
-    () => {
-      ui.filter = "all";
-      ui.search = "";
-      el.search.value = "";
-      dispatch({ type: "resetAll", params: {} }, { optimistic: false });
-    }
-  );
-});
 
 document.getElementById("btn-whoami").addEventListener("click", () => askWhoAmI({ force: true }));
 document.getElementById("btn-refresh").addEventListener("click", async () => {

@@ -16,7 +16,7 @@
  */
 
 import { getStore } from "@netlify/blobs";
-import { applyOp, initialState, PlanError, syncAssignments, normalizePlan } from "../../public/plan-core.js";
+import { applyOp, initialState, PlanError, syncAssignments, normalizePlan, TRIP_START, TRIP_END } from "../../public/plan-core.js";
 
 const STORE_NAME = "ski-trip";
 const KEY = "plan-2027";
@@ -73,11 +73,20 @@ function envelope(state, meta) {
 }
 
 function unpack(found) {
-  return {
-    state: syncAssignments(found.data.state ?? found.data),
-    etag: found.etag,
-    meta: found.data.meta ?? {}
-  };
+  const state = syncAssignments(found.data.state ?? found.data);
+
+  /*
+   * A plan stored before trip dates existed has none, and redeploying cannot
+   * add them — the stored plan always wins over initialState(). Backfill the
+   * dates only, because they are facts about the trip. People and rooms are
+   * deliberately NOT backfilled: someone may have been removed on purpose,
+   * and resurrecting them behind the organiser's back would be worse than
+   * leaving the plan as they left it.
+   */
+  if (!state.startDate) state.startDate = TRIP_START;
+  if (!state.endDate) state.endDate = TRIP_END;
+
+  return { state, etag: found.etag, meta: found.data.meta ?? {} };
 }
 
 /*
