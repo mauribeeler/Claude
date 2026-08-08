@@ -12,7 +12,7 @@ import test from "node:test";
 import {
   initialState, applyOp, getStats, validateState, createSlotsForRoom,
   personById, roomById, normalizePlan, syncAssignments, PlanError, clone,
-  roomCapacity, roomOccupancy
+  roomCapacity, roomOccupancy, migratePlan
 } from "../public/plan-core.js";
 
 import { handleRequest } from "../netlify/functions/plan.mjs";
@@ -505,6 +505,73 @@ test("export/import round trips without loss", () => {
 
 test("unknown operations are refused", () => {
   assert.throws(() => applyOp(initialState(), { type: "drop database" }), PlanError);
+});
+
+/* ===========================================================================
+   Migrations — bringing an already-stored plan up to date
+   =========================================================================== */
+
+/* A plan as it was saved before Mauricio, the dates and the female dorm. */
+const legacyPlan = () => ({
+  version: 2,
+  tripName: "Ski Trip 2027 — Zermatt",
+  people: ["Amelia", "Hannah", "Toby"].map((n, i) => ({
+    id: `p${i}`, name: n, confirmed: false, note: "", pairWith: null, assignment: null
+  })),
+  rooms: [{
+    id: "dorm", name: "Dormitory", type: "dorm", mode: "standard", beds: 6, autoFill: true,
+    slots: Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, type: "single", capacity: 1, label: `Bunk ${i + 1}`, occupants: [] }))
+  }]
+});
+
+test("a stored plan gains the organiser, the dates and the female dorm", () => {
+  const s = legacyPlan();
+  const applied = migratePlan(s);
+  assert.deepEqual(applied.sort(), ["dates2027", "femaleDorm2027", "organiser2027"]);
+  assert.ok(s.people.some((p) => p.name === "Mauricio"));
+  assert.equal(s.startDate, "2027-01-31");
+  assert.ok(s.rooms.some((r) => r.id === "femaleDorm"));
+  assert.equal(s.people.find((p) => p.name === "Hannah").pinned, true, "and Hannah takes her booked bed");
+});
+
+test("migrations never run twice", () => {
+  const s = legacyPlan();
+  migratePlan(s);
+  const afterFirst = JSON.stringify(s);
+  assert.deepEqual(migratePlan(s), [], "second pass changes nothing");
+  assert.equal(JSON.stringify(s), afterFirst);
+});
+
+test("someone removed on purpose is not resurrected", () => {
+  const s = legacyPlan();
+  migratePlan(s);
+  s.people = s.people.filter((p) => p.name !== "Mauricio");
+  migratePlan(s);
+  assert.equal(s.people.some((p) => p.name === "Mauricio"), false);
+});
+
+test("a room deleted on purpose is not resurrected", () => {
+  const s = legacyPlan();
+  migratePlan(s);
+  s.rooms = s.rooms.filter((r) => r.id !== "femaleDorm");
+  migratePlan(s);
+  assert.equal(s.rooms.some((r) => r.id === "femaleDorm"), false);
+});
+
+test("a plan that already has everything is left alone", () => {
+  const s = initialState();
+  const before = JSON.stringify(s);
+  assert.deepEqual(migratePlan(s), []);
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("an existing female dorm under another name is not duplicated", () => {
+  const s = legacyPlan();
+  s.rooms.push({ id: "girls", name: "Female Bunk Room", type: "dorm", mode: "standard", beds: 2, autoFill: true,
+    slots: [{ id: "g1", type: "single", capacity: 1, label: "Bunk 1", occupants: [] },
+            { id: "g2", type: "single", capacity: 1, label: "Bunk 2", occupants: [] }] });
+  migratePlan(s);
+  assert.equal(s.rooms.filter((r) => /female/i.test(r.name)).length, 1);
 });
 
 /* ===========================================================================

@@ -171,7 +171,70 @@ export function initialState() {
     hannah.pinned = true;
   }
 
+  state.migrations = {};
+  Object.keys(MIGRATIONS).forEach((k) => { state.migrations[k] = true; });
   return syncAssignments(state);
+}
+
+/* --------------------------------------------------------------------------
+   migrations
+   --------------------------------------------------------------------------
+
+   A stored plan always wins over initialState(), so once a shared plan exists
+   a redeploy can never change it. These bring an older stored plan up to date.
+
+   Each one runs AT MOST ONCE, recorded in state.migrations. That matters: if
+   the organiser later removes a person or room on purpose, it must stay
+   removed rather than reappearing on the next page load.
+   -------------------------------------------------------------------------- */
+
+const MIGRATIONS = {
+  /* Trip dates were added after the first plans were saved. */
+  dates2027(state) {
+    if (state.startDate && state.endDate) return false;
+    state.startDate = state.startDate || TRIP_START;
+    state.endDate = state.endDate || TRIP_END;
+    return true;
+  },
+
+  /* Mauricio (the organiser) was added to the roster later. */
+  organiser2027(state) {
+    if (state.people.some((p) => p.name.trim().toLowerCase() === "mauricio")) return false;
+    state.people.push(makePerson("Mauricio"));
+    return true;
+  },
+
+  /* The Female Dormitory and Hannah's booking were added later. */
+  femaleDorm2027(state) {
+    const exists = state.rooms.some((r) => r.id === "femaleDorm" || /female/i.test(r.name));
+    if (exists) return false;
+    const blueprint = ROOM_BLUEPRINT.find((b) => b.id === "femaleDorm");
+    if (!blueprint) return false;
+    const room = roomFromBlueprint(blueprint);
+    state.rooms.push(room);
+
+    const hannah = state.people.find((p) => p.name === FEMALE_DORM_OCCUPANT);
+    if (hannah && !hannah.assignment) {
+      room.slots[0].occupants = [hannah.id];
+      hannah.pinned = true;
+    }
+    return true;
+  }
+};
+
+/**
+ * Bring a stored plan up to date. Returns the names of the migrations that
+ * actually changed something, so the caller knows whether to persist.
+ */
+export function migratePlan(state) {
+  if (!state.migrations || typeof state.migrations !== "object") state.migrations = {};
+  const applied = [];
+  for (const [key, run] of Object.entries(MIGRATIONS)) {
+    if (state.migrations[key]) continue;
+    if (run(state)) applied.push(key);
+    state.migrations[key] = true;   // stamped either way, so it never repeats
+  }
+  return applied;
 }
 
 /* --------------------------------------------------------------------------
@@ -392,6 +455,7 @@ export function normalizePlan(data) {
     tripName: typeof data.tripName === "string" && data.tripName ? data.tripName : "Ski Trip 2027 — Zermatt",
     startDate: validDate(data.startDate) ? data.startDate : TRIP_START,
     endDate: validDate(data.endDate) ? data.endDate : TRIP_END,
+    migrations: (data.migrations && typeof data.migrations === "object") ? { ...data.migrations } : {},
     people,
     rooms
   });

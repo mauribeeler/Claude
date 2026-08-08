@@ -16,7 +16,7 @@
  */
 
 import { getStore } from "@netlify/blobs";
-import { applyOp, initialState, PlanError, syncAssignments, normalizePlan, TRIP_START, TRIP_END } from "../../public/plan-core.js";
+import { applyOp, initialState, PlanError, syncAssignments, normalizePlan, migratePlan } from "../../public/plan-core.js";
 
 const STORE_NAME = "ski-trip";
 const KEY = "plan-2027";
@@ -74,19 +74,8 @@ function envelope(state, meta) {
 
 function unpack(found) {
   const state = syncAssignments(found.data.state ?? found.data);
-
-  /*
-   * A plan stored before trip dates existed has none, and redeploying cannot
-   * add them — the stored plan always wins over initialState(). Backfill the
-   * dates only, because they are facts about the trip. People and rooms are
-   * deliberately NOT backfilled: someone may have been removed on purpose,
-   * and resurrecting them behind the organiser's back would be worse than
-   * leaving the plan as they left it.
-   */
-  if (!state.startDate) state.startDate = TRIP_START;
-  if (!state.endDate) state.endDate = TRIP_END;
-
-  return { state, etag: found.etag, meta: found.data.meta ?? {} };
+  const migrated = migratePlan(state);
+  return { state, etag: found.etag, meta: found.data.meta ?? {}, migrated };
 }
 
 /*
@@ -101,7 +90,26 @@ function unpack(found) {
  */
 async function readPlan(store) {
   const found = await store.getWithMetadata(KEY, { type: "json" });
-  if (found && found.data) return unpack(found);
+  if (found && found.data) {
+    const result = unpack(found);
+
+    /*
+     * A migration changed the stored plan, so save it — otherwise it would be
+     * re-derived on every read and never actually stick. Conditional on the
+     * etag we read, and best-effort: if someone else wrote first, their write
+     * carries the same migration anyway, so losing this race costs nothing.
+     */
+    if (result.migrated.length && result.etag) {
+      const write = await store.setJSON(
+        KEY,
+        envelope(result.state, { ...result.meta, updatedAt: new Date().toISOString(),
+                                 lastChange: "Plan brought up to date." }),
+        { onlyIfMatch: result.etag }
+      );
+      if (write.modified) result.etag = write.etag;
+    }
+    return result;
+  }
 
   const seeded = initialState();
   const seedMeta = { updatedAt: new Date().toISOString(), updatedBy: null, lastChange: "Plan created." };
