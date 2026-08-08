@@ -75,6 +75,13 @@ function adopt(payload) {
 }
 
 async function loadPlan({ silent = false } = {}) {
+  // Opened straight from disk (the standalone single-file copy): there is no
+  // server to talk to, so go local without a doomed request and a scary error.
+  if (typeof location !== "undefined" && location.protocol === "file:") {
+    if (syncMode === "connecting") { syncMode = "local"; state = initialState(); }
+    if (!silent) render();
+    return false;
+  }
   try {
     const payload = await apiFetch("GET");
     adopt(payload);
