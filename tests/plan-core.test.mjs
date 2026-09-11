@@ -65,11 +65,11 @@ const post = async (store, op, actor = "Tester", headers = {}) => {
    Model
    =========================================================================== */
 
-test("boots with the 16 names and the five rooms", () => {
+test("boots with the 17 names and the five rooms", () => {
   const s = initialState();
-  assert.equal(s.people.length, 16);
+  assert.equal(s.people.length, 17);
   assert.equal(s.people[0].name, "Amelia");
-  assert.equal(s.people.at(-1).name, "Mauricio");
+  assert.equal(s.people.at(-1).name, "Minnie");
   assert.ok(s.people.every((p) => !p.confirmed && p.note === ""));
   assert.deepEqual(s.rooms.map((r) => r.name),
     ["Double Room 1", "Double Room 2", "Family Room", "Dormitory", "Female Dormitory"]);
@@ -88,12 +88,12 @@ test("Hannah starts in the Female Dormitory, pinned, and nobody else is placed",
   assert.equal(s.people.filter((p) => p.assignment).length, 1, "only Hannah is placed");
 });
 
-test("16 people against 15 beds is flagged — one more bed is needed", () => {
+test("17 people against 15 beds is flagged — two more beds are needed", () => {
   const s = initialState();
   const stats = getStats(s);
   assert.equal(stats.beds, 15, "2 + 2 + 4 + 6 + 1");
-  assert.equal(stats.total, 16);
-  assert.equal(stats.overCapacityBy, 1);
+  assert.equal(stats.total, 17);
+  assert.equal(stats.overCapacityBy, 2);
   assert.ok(validateState(s).some((i) => i.level === "error" && /nowhere to sleep/.test(i.text)));
 });
 
@@ -118,20 +118,20 @@ test("trip dates can be changed, and nonsense is refused", () => {
 
 test("adding a room adds beds and clears the shortfall", () => {
   let s = initialState();
-  assert.equal(getStats(s).overCapacityBy, 1);
+  assert.equal(getStats(s).overCapacityBy, 2);
   s = applyOp(s, { type: "addRoom", params: { name: "Twin Room 3", type: "double" } }).state;
   assert.equal(s.rooms.length, 6);
   assert.equal(getStats(s).beds, 17);
-  assert.equal(getStats(s).overCapacityBy, 0, "16 people now have somewhere to sleep");
+  assert.equal(getStats(s).overCapacityBy, 0, "17 people now have somewhere to sleep");
   assert.equal(validateState(s).filter((i) => /nowhere to sleep/.test(i.text)).length, 0);
 });
 
 test("a new room is used by Suggested Allocation", () => {
   let s = initialState();
-  s = applyOp(s, { type: "addRoom", params: { name: "Single Room", type: "dorm", beds: 1 } }).state;
+  s = applyOp(s, { type: "addRoom", params: { name: "Twin Room 4", type: "double" } }).state;
   s.people.forEach((p) => { p.confirmed = true; });
   s = applyOp(s, { type: "suggest", params: {} }).state;
-  assert.equal(getStats(s).assigned, 16, "everyone including Mauricio gets a bed");
+  assert.equal(getStats(s).assigned, 17, "everyone including Mauricio and Minnie gets a bed");
   assert.equal(getStats(s).confirmedUnassigned, 0);
 });
 
@@ -299,14 +299,14 @@ test("confirmed people with no bed are flagged", () => {
   assert.ok(validateState(s).some((i) => i.level === "warn" && /no bed/.test(i.text)));
 });
 
-test("suggested allocation fills all 15 beds, leaving one of the 16 out", () => {
+test("suggested allocation fills all 15 beds, leaving two of the 17 out", () => {
   let s = initialState();
   s.people.forEach((p) => { p.confirmed = true; });
   s = applyOp(s, { type: "suggest", params: {} }).state;
 
   const stats = getStats(s);
   assert.equal(stats.assigned, 15, "every bed used");
-  assert.equal(stats.confirmedUnassigned, 1, "one person still needs a bed booking");
+  assert.equal(stats.confirmedUnassigned, 2, "two people still need a bed booking");
   assert.ok(stats.occupied <= stats.beds);
   assert.equal(validateState(s).filter((i) => i.level === "error" && !/nowhere to sleep/.test(i.text)).length, 0);
   assert.ok(s.rooms.filter((r) => r.type === "double").every((r) => r.mode === "twin"), "no pairs means no couple rooms");
@@ -444,14 +444,14 @@ test("a pinned person is never paired off into a double room", () => {
 test("people can be added and removed", () => {
   let s = initialState();
   s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
-  assert.equal(s.people.length, 17);
-  assert.equal(getStats(s).overCapacityBy, 2, "17 people against 15 beds");
+  assert.equal(s.people.length, 18);
+  assert.equal(getStats(s).overCapacityBy, 3, "18 people against 15 beds");
 
   const bruno = s.people.at(-1);
   s = applyOp(s, { type: "assign", params: { personId: bruno.id, roomId: "dorm", slotId: roomById(s, "dorm").slots[0].id } }).state;
   s = applyOp(s, { type: "deletePerson", params: { personId: bruno.id } }).state;
 
-  assert.equal(s.people.length, 16);
+  assert.equal(s.people.length, 17);
   assert.equal(roomById(s, "dorm").slots[0].occupants.length, 0, "deleting frees their bed");
 });
 
@@ -524,14 +524,24 @@ const legacyPlan = () => ({
   }]
 });
 
-test("a stored plan gains the organiser, the dates and the female dorm", () => {
+test("a stored plan gains the organiser, Minnie, the dates and the female dorm", () => {
   const s = legacyPlan();
   const applied = migratePlan(s);
-  assert.deepEqual(applied.sort(), ["dates2027", "femaleDorm2027", "organiser2027"]);
+  assert.deepEqual(applied.sort(), ["dates2027", "femaleDorm2027", "guestMinnie2027", "organiser2027"]);
   assert.ok(s.people.some((p) => p.name === "Mauricio"));
+  assert.ok(s.people.some((p) => p.name === "Minnie"));
   assert.equal(s.startDate, "2027-01-31");
   assert.ok(s.rooms.some((r) => r.id === "femaleDorm"));
   assert.equal(s.people.find((p) => p.name === "Hannah").pinned, true, "and Hannah takes her booked bed");
+});
+
+test("a plan that already has Mauricio only gains Minnie", () => {
+  const s = legacyPlan();
+  s.people.push({ id: "pm", name: "Mauricio", confirmed: false, note: "", pairWith: null, assignment: null });
+  const applied = migratePlan(s);
+  assert.deepEqual(applied.sort(), ["dates2027", "femaleDorm2027", "guestMinnie2027"]);
+  assert.equal(s.people.filter((p) => p.name === "Mauricio").length, 1, "not duplicated");
+  assert.ok(s.people.some((p) => p.name === "Minnie"));
 });
 
 test("migrations never run twice", () => {
@@ -548,6 +558,14 @@ test("someone removed on purpose is not resurrected", () => {
   s.people = s.people.filter((p) => p.name !== "Mauricio");
   migratePlan(s);
   assert.equal(s.people.some((p) => p.name === "Mauricio"), false);
+});
+
+test("Minnie, removed on purpose, is not resurrected either", () => {
+  const s = legacyPlan();
+  migratePlan(s);
+  s.people = s.people.filter((p) => p.name !== "Minnie");
+  migratePlan(s);
+  assert.equal(s.people.some((p) => p.name === "Minnie"), false);
 });
 
 test("a room deleted on purpose is not resurrected", () => {
@@ -581,7 +599,7 @@ test("an existing female dorm under another name is not duplicated", () => {
 test("GET seeds the plan once, so everyone sees the same person ids", async () => {
   const store = fakeStore();
   const first = await (await handleRequest(req("GET"), store)).json();
-  assert.equal(first.state.people.length, 16);
+  assert.equal(first.state.people.length, 17);
   assert.ok(first.etag, "the seed is persisted, not just returned");
 
   // A second visitor must get the SAME ids, or their first edit would be
@@ -778,6 +796,6 @@ test("a malformed import is refused before it touches the stored plan", async ()
   assert.equal(res.status, 400);
 
   const final = await (await handleRequest(req("GET"), store)).json();
-  assert.equal(final.state.people.length, 16, "stored plan untouched");
+  assert.equal(final.state.people.length, 17, "stored plan untouched");
   assert.equal(final.state.people[0].confirmed, true);
 });

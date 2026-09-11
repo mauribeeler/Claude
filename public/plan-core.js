@@ -15,7 +15,7 @@ export const SCHEMA_VERSION = 2;
 
 export const STARTING_PEOPLE = [
   "Amelia", "Charles", "Courtney", "Graham", "Hannah", "Henry", "JJ", "Joel",
-  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley", "Mauricio"
+  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley", "Mauricio", "Minnie"
 ];
 
 /* Zermatt, Sunday 31 Jan to Friday 5 Feb 2027 — five nights. */
@@ -201,6 +201,13 @@ const MIGRATIONS = {
   organiser2027(state) {
     if (state.people.some((p) => p.name.trim().toLowerCase() === "mauricio")) return false;
     state.people.push(makePerson("Mauricio"));
+    return true;
+  },
+
+  /* Minnie was added to the roster later. */
+  guestMinnie2027(state) {
+    if (state.people.some((p) => p.name.trim().toLowerCase() === "minnie")) return false;
+    state.people.push(makePerson("Minnie"));
     return true;
   },
 
