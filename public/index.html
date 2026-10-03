@@ -241,9 +241,7 @@ input,select,textarea{font:inherit;color:inherit}
   border:1px solid var(--line-strong);
   border-radius:10px;
 }
-textarea.input{min-height:84px;resize:vertical;line-height:1.45}
-/* 16px stops iOS Safari zooming the page when a field is focused. */
-@media (max-width:640px){ .input,select.input,textarea.input{font-size:16px} }
+textarea.input{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.45}
 .input::placeholder{color:var(--text-faint)}
 
 /* ---------------------------------------------------------------
@@ -291,8 +289,8 @@ textarea.input{min-height:84px;resize:vertical;line-height:1.45}
 :root[data-theme="light"] .tab[aria-selected="true"]{color:#fff}
 .tab .n{font-variant-numeric:tabular-nums;opacity:.8;font-size:12px}
 
-.head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hint{font-size:12.5px;color:var(--text-faint)}
+.add-person{display:flex;gap:8px}
+.add-person .input{flex:1 1 auto}
 
 .people-list{list-style:none;margin:0;padding:0}
 .person{
@@ -302,26 +300,11 @@ textarea.input{min-height:84px;resize:vertical;line-height:1.45}
 }
 .person:last-child{border-bottom:0}
 .person.flag{background:var(--pend-bg)}
-.person-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.person-name{
-  appearance:none;background:none;border:0;margin:0;padding:2px 0;
-  font:inherit;font-size:15.5px;font-weight:620;color:inherit;text-align:left;
-  cursor:pointer;min-width:0;overflow-wrap:anywhere;border-radius:6px;
-}
-.person-name:hover{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
-.person-name:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
-.person-details{display:grid;gap:3px;cursor:pointer;min-width:0}
-.person-details:hover .person-line > span:last-child{color:var(--text)}
-.person-line{display:flex;gap:8px;align-items:baseline;font-size:13px;color:var(--text-dim);min-width:0}
-.person-line > span:last-child{min-width:0;overflow-wrap:anywhere}
-.person-line .lbl{
-  flex:none;width:54px;font-size:10.5px;font-weight:700;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--text-faint);
-}
-.person-line.warn{color:var(--pend)}
-.person-line.none{color:var(--text-faint)}
-.person-line.note > span:last-child{font-style:italic}
-.person-line .pill{margin-left:6px;vertical-align:baseline;padding:1px 7px;font-size:11px}
+.person-top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.person-id{flex:1 1 150px;min-width:0}
+.person-name{font-size:15.5px;font-weight:620;overflow-wrap:anywhere}
+.person-where{font-size:13px;color:var(--text-dim);margin-top:2px;overflow-wrap:anywhere}
+.person-where.none{color:var(--pend)}
 
 .pill{
   display:inline-flex;align-items:center;gap:5px;
@@ -349,9 +332,21 @@ textarea.input{min-height:84px;resize:vertical;line-height:1.45}
 .toggle[aria-pressed="true"] .dot{background:var(--ok)}
 
 .person-actions{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
-/* Delete is always there but deliberately quiet; the sheet asks to confirm. */
-.btn-quiet-danger{margin-left:auto;border-color:transparent;background:transparent;color:var(--err)}
-.btn-quiet-danger:hover{background:var(--err-bg);border-color:var(--err-line)}
+.person-actions .pair-row{margin-left:auto}
+.btn-pinned{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.btn-pinned:hover{background:var(--ok-bg);filter:brightness(.97)}
+.person-where .pill{margin-left:6px;vertical-align:baseline}
+.person-note{width:100%}
+.note-input{
+  width:100%;padding:7px 10px;min-height:36px;font-size:13.5px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+}
+.pair-row{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-faint)}
+.pair-row select{
+  padding:5px 8px;min-height:32px;font-size:13px;color:var(--text-dim);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  max-width:150px;
+}
 .empty{padding:26px 16px;text-align:center;color:var(--text-faint);font-size:14px}
 
 /* ---------------------------------------------------------------
@@ -493,74 +488,6 @@ input[type="file"]{font-size:13px;max-width:100%}
 }
 .toast[hidden]{display:none}
 
-/* Person details sheet */
-.sheet-group{
-  margin:0;padding:10px 12px 12px;min-width:0;
-  border:1px solid var(--line);border-radius:var(--r-m);
-  display:grid;gap:10px;
-}
-.sheet-group legend{
-  padding:0 6px;font-size:13px;font-weight:650;color:var(--text);
-  display:flex;align-items:center;gap:10px;
-}
-.leg-clear{font-size:12px;font-weight:550}
-.leg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px}
-@media (min-width:520px){ .leg-grid{grid-template-columns:repeat(3,minmax(0,1fr))} }
-.sheet-text{font-size:13.5px;color:var(--text-dim)}
-.field-msg{font-size:12.5px;min-height:0}
-.field-msg:empty{display:none}
-.field-msg.warn{color:var(--pend)}
-.field-msg.err{color:var(--err)}
-.field-help{font-size:12px;color:var(--text-faint)}
-.check{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;cursor:pointer}
-.check input{margin-top:3px;width:18px;height:18px;flex:none;accent-color:var(--accent)}
-.seg{display:flex;flex-wrap:wrap;gap:8px}
-.seg label{position:relative;cursor:pointer}
-.seg input{position:absolute;opacity:0;width:1px;height:1px}
-.seg span{
-  display:inline-flex;align-items:center;min-height:38px;padding:7px 14px;
-  border:1px solid var(--line-strong);border-radius:99px;background:var(--surface);
-  font-size:13.5px;font-weight:600;color:var(--text-dim);
-}
-.seg input:checked + span{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.seg input[value="no"]:checked + span{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
-.seg input:focus-visible + span{outline:2px solid var(--focus);outline-offset:2px}
-.modal-foot .btn-danger{margin-right:auto}
-
-.linkish{
-  appearance:none;background:none;border:0;padding:0;margin:0;
-  font:inherit;color:var(--accent);cursor:pointer;
-  text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px;
-}
-.linkish:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
-
-/* Flights board */
-.flights{margin-top:16px}
-.board{display:grid;gap:18px}
-@media (min-width:760px){ .board{grid-template-columns:repeat(2,minmax(0,1fr))} }
-.board-col h3{
-  font-size:12px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--text-faint);margin-bottom:8px;
-}
-.board-day + .board-day{margin-top:12px}
-.board-day h4{margin:0 0 6px;font-size:13.5px;font-weight:640}
-.board-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.board-row{
-  display:grid;grid-template-columns:58px minmax(0,1fr);gap:3px 12px;align-items:start;
-  padding:9px 12px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-m);
-}
-.board-row .time{
-  grid-row:span 2;font-size:16px;font-weight:660;font-variant-numeric:tabular-nums;line-height:1.2;
-}
-.board-row .time small{display:block;font-size:10.5px;font-weight:600;color:var(--text-faint);letter-spacing:.03em}
-.board-row .what{font-size:13.5px;overflow-wrap:anywhere}
-.board-row .who{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:13.5px}
-.board-row .count{font-size:12px;color:var(--text-faint)}
-.board-row .count:empty{display:none}
-.board-empty{font-size:13.5px;color:var(--text-dim);max-width:62ch}
-.missing{margin-top:16px;font-size:13.5px;color:var(--text-dim);display:flex;flex-wrap:wrap;gap:4px 10px}
-.missing.all-in{color:var(--ok)}
-
 /* ---------------------------------------------------------------
    13. Sync bar
 --------------------------------------------------------------- */
@@ -610,9 +537,9 @@ input[type="file"]{font-size:13px;max-width:100%}
   }
   body{background:#fff;color:#000;font-size:11pt}
   .wrap{max-width:none;padding:0}
-  .toolbar,.people-controls,.person-actions,.room-mode,
+  .toolbar,.people-controls,.person-actions,.pair-row,.room-mode,
   .chip .x,.backdrop,.toast,details.help,.meter,.close-x,
-  .btn,.tabs,.syncbar,.rooms-head,.no-print{display:none !important}
+  .btn,.tabs,.add-person,.syncbar,.rooms-head,.no-print{display:none !important}
   .card,.room,.stat{border:1px solid #bbb;box-shadow:none;break-inside:avoid}
   .card-head{border-bottom:1px solid #bbb}
   .columns{display:block}
@@ -621,9 +548,9 @@ input[type="file"]{font-size:13px;max-width:100%}
   .rooms{display:block}
   .print-only{display:block}
   .person{break-inside:avoid;padding:6px 10px}
-  .linkish{color:#000;text-decoration:none}
-  .board-row{break-inside:avoid;background:#fff}
-  .flights{break-before:auto}
+  .note-input{border:0;background:transparent;padding:0;min-height:0;font-style:italic;color:#333}
+  /* an empty note would otherwise print its placeholder as if it were content */
+  .note-input:placeholder-shown{display:none}
   .reminder{background:#fff;border:1px solid #999;border-left:3px solid #333}
   .slots{padding:8px 10px}
   .slot{break-inside:avoid;padding:6px 8px}
@@ -678,19 +605,22 @@ input[type="file"]{font-size:13px;max-width:100%}
     <section class="card" aria-labelledby="people-h">
       <div class="card-head">
         <h2 id="people-h">People</h2>
-        <div class="head-actions">
-          <span class="pill pill-neutral" id="people-count">0</span>
-          <button class="btn btn-sm btn-primary no-print" type="button" id="btn-add-person">+ Add person</button>
-        </div>
+        <span class="pill pill-neutral" id="people-count">0</span>
       </div>
 
       <div class="people-controls no-print">
         <div class="field">
-          <label for="search">Search by name, flight or airport</label>
-          <input class="input" id="search" type="search" placeholder="e.g. Toby, EZY8191, GVA" autocomplete="off">
+          <label for="search">Search people</label>
+          <input class="input" id="search" type="search" placeholder="Type a name…" autocomplete="off">
         </div>
         <div class="tabs" role="tablist" aria-label="Filter people" id="tabs"></div>
-        <p class="hint">Tap anyone to edit their details, add flights, or delete them.</p>
+        <div class="field">
+          <label for="new-person">Add someone new</label>
+          <div class="add-person">
+            <input class="input" id="new-person" type="text" placeholder="Name" autocomplete="off" maxlength="40">
+            <button class="btn" type="button" id="btn-add-person">Add</button>
+          </div>
+        </div>
       </div>
 
       <ul class="people-list" id="people-list"></ul>
@@ -706,21 +636,11 @@ input[type="file"]{font-size:13px;max-width:100%}
 
   </div>
 
-  <section class="card flights" aria-labelledby="flights-h">
-    <div class="card-head">
-      <h2 id="flights-h">Flights</h2>
-      <span class="pill pill-neutral" id="flights-count">0 added</span>
-    </div>
-    <div class="card-body" id="flights"></div>
-  </section>
-
   <details class="help no-print">
     <summary>How to use this ⓘ</summary>
     <ol>
-      <li><strong>Add or remove people.</strong> <em>+ Add person</em> at the top of the list. To change or delete someone, tap their name — everything about them is in one place.</li>
-      <li><strong>Confirm people.</strong> Tap the status button on each person until the people you actually trust to turn up are green.</li>
-      <li><strong>Add flights.</strong> Tap a person and fill in <em>Flying out</em> and <em>Flying home</em> — even just the flight number helps. The Flights board groups everyone on the same flight, for planning the transfer to Zermatt.</li>
-      <li><strong>Assign beds.</strong> Use <em>Choose bed</em> on a person, or <em>+ Add</em> on an empty bed. Set double rooms to <em>Couple</em> where two people share a bed.</li>
+      <li><strong>Confirm people first.</strong> Tap the status button on each person until the people you actually trust to turn up are green.</li>
+      <li><strong>Assign rooms second.</strong> Use <em>Assign</em> on a person, or tap a bed slot to fill it. Set double rooms to <em>Couple</em> where two people are sharing a bed.</li>
       <li><strong>Check warnings before finalising.</strong> Red = a real problem (over capacity, someone in two beds). Amber = confirmed people still without a bed.</li>
       <li><strong>Everyone shares this page.</strong> Send the link and anyone can confirm themselves or move beds — changes appear on everyone's screen within a few seconds, and the name shown at the top is who made the last one. Two people editing at once is fine; if someone takes the last bunk first, you'll be told rather than quietly overwritten.</li>
       <li><strong>Keep a copy when it's settled.</strong> Print / PDF gives you a clean one-pager for the group chat.</li>
