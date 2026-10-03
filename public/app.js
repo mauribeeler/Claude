@@ -25,7 +25,7 @@ let lastRenderedSignature = "";
 const ui = { filter: "all", search: "" };
 
 const POLL_MS = 6000;
-const NOTE_DEBOUNCE_MS = 500;
+const NOTE_DEBOUNCE_MS = 700;
 const API = "/api/plan";
 
 /* The viewer's own name and the shared passcode are the only things kept in
@@ -117,6 +117,7 @@ async function loadPlan({ silent = false } = {}) {
  * replaces whatever we guessed — including when it rejects the change because
  * someone else took the bed first.
  */
+/* Resolves true if the change was saved, false if it wasn't. */
 async function dispatch(op, { optimistic = true } = {}) {
   if (syncMode === "local") {
     try {
@@ -124,10 +125,11 @@ async function dispatch(op, { optimistic = true } = {}) {
       state = result.state;
       render();
       if (result.message) toast(result.message);
+      return true;
     } catch (err) {
       toast(err instanceof PlanError ? err.message : "That didn't work.");
+      return false;
     }
-    return;
   }
 
   const rollback = { state: clone(state), etag, meta: { ...meta } };
@@ -139,7 +141,7 @@ async function dispatch(op, { optimistic = true } = {}) {
     } catch (err) {
       // Invalid against our own copy; let the server have the final word
       // only if it might disagree, otherwise stop here.
-      if (err instanceof PlanError) { toast(err.message); return; }
+      if (err instanceof PlanError) { toast(err.message); return false; }
       throw err;
     }
   }
@@ -153,13 +155,14 @@ async function dispatch(op, { optimistic = true } = {}) {
     syncMode = "shared";
     render();
     if (payload.message) toast(payload.message);
+    return true;
   } catch (err) {
     if (err.status === 401) {
       state = rollback.state; etag = rollback.etag; meta = rollback.meta;
       syncMode = "offline";
       render();
       askPasscode(true);
-      return;
+      return false;
     }
     if (err.payload?.state) {
       // The server rejected it and handed back the live plan — show reality.
@@ -167,12 +170,13 @@ async function dispatch(op, { optimistic = true } = {}) {
       syncMode = "shared";
       render();
       toast(err.message);
-      return;
+      return false;
     }
     state = rollback.state; etag = rollback.etag; meta = rollback.meta;
     syncMode = "offline";
     render();
     toast(err.message || "Could not reach the plan — your change was not saved.");
+    return false;
   } finally {
     inFlight -= 1;
     renderSyncBar();
@@ -225,6 +229,19 @@ const el = {
   syncDot: document.getElementById("sync-dot"),
   syncWho: document.getElementById("sync-who")
 };
+
+const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+/* Initials on a colour picked from the name, so the same person is the same
+   colour everywhere (list, beds, pickers) and easy to spot at a glance. */
+function avatar(name) {
+  const clean = String(name || "?").trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const initials = (parts.length > 1 ? parts[0][0] + parts[1][0] : clean.slice(0, 2)).toUpperCase();
+  let h = 0;
+  for (const ch of clean.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<span class="avatar" style="--h:${h}" aria-hidden="true">${esc(initials)}</span>`;
+}
 
 function esc(str) {
   return String(str ?? "")
@@ -288,7 +305,7 @@ function renderDates() {
   const node = document.getElementById("trip-dates");
   if (!node) return;
   const text = formatDates(state);
-  node.textContent = text;
+  node.innerHTML = text ? `${icon("cal")}${esc(text)}` : "";
   node.hidden = !text;
 }
 
@@ -317,7 +334,7 @@ function renderSyncBar() {
     bits.push(`last change by ${esc(meta.updatedBy)} ${esc(relativeTime(meta.updatedAt))}`);
   }
   if (syncMode === "local") {
-    bits.push("changes are lost when you close this tab — use Export JSON to keep them");
+    bits.push("changes are lost when you close this tab — Print / PDF keeps a copy");
   }
   el.syncWho.innerHTML = bits.join(" · ");
 }
@@ -391,29 +408,39 @@ function renderPeople() {
         `<option value="${esc(o.id)}"${p.pairWith === o.id ? " selected" : ""}>${esc(o.name)}</option>`)
     ).join("");
 
-    return `<li class="person${flag ? " flag" : ""}" data-person="${esc(p.id)}">
+    const id = esc(p.id);
+    const draft = noteDrafts.get(p.id);
+    const noteValue = draft ? draft.value : (p.note || "");
+
+    return `<li class="person${flag ? " flag" : ""}" data-person="${id}">
       <div class="person-top">
+        ${avatar(p.name)}
         <div class="person-id">
           <div class="person-name">${esc(p.name)}</div>
-          <div class="person-where${where ? "" : " none"}">${where ? esc(where) : "No bed assigned"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</div>
+          <div class="person-where${where ? "" : " none"}">${icon("bed")} ${where ? esc(where) : "No bed yet"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</div>
         </div>
-        <button class="toggle" type="button" data-action="toggle-confirm" data-person="${esc(p.id)}" aria-pressed="${p.confirmed}">
+        <button class="toggle" type="button" data-action="toggle-confirm" data-person="${id}" aria-pressed="${p.confirmed}">
           <span class="dot" aria-hidden="true"></span>${p.confirmed ? "Confirmed" : "Not confirmed"}
         </button>
       </div>
-      <div class="person-actions no-print">
-        <button class="btn btn-sm" type="button" data-action="assign" data-person="${esc(p.id)}">${p.assignment ? "Move" : "Assign"}</button>
-        ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${esc(p.id)}">Remove from bed</button>` : ""}
-        ${p.assignment ? `<button class="btn btn-sm${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${esc(p.id)}" aria-pressed="${!!p.pinned}" title="${p.pinned ? "Booked — allocation leaves this bed alone" : "Pin this bed as already booked"}">${p.pinned ? "📌 Booked" : "Pin as booked"}</button>` : ""}
-        <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${esc(p.id)}">Delete</button>
-        <span class="pair-row">
-          <label for="pair_${esc(p.id)}">Shares bed with</label>
-          <select id="pair_${esc(p.id)}" data-action="pair" data-person="${esc(p.id)}" aria-label="Bed-sharing partner for ${esc(p.name)}">${pairOptions}</select>
-        </span>
-      </div>
       <div class="person-note">
-        <label class="sr-only" for="note_${esc(p.id)}">Note for ${esc(p.name)}</label>
-        <input class="note-input" id="note_${esc(p.id)}" type="text" maxlength="300" placeholder="Note — flights, arrival day, snores…" value="${esc(p.note)}" data-action="note" data-person="${esc(p.id)}">
+        <label class="sr-only" for="note_${id}">Note for ${esc(p.name)}</label>
+        <textarea class="note-input" id="note_${id}" rows="1" maxlength="500" placeholder="Add a note — flights, arrival time, anything…" data-action="note" data-person="${id}">${esc(noteValue)}</textarea>
+        <span class="note-status${draft && draft.state === "saved" ? " saved" : ""}${draft && draft.state === "error" ? " err" : ""}" id="ns_${id}" aria-live="polite">${draft ? esc(noteStatusText(draft.state)) : ""}</span>
+      </div>
+      <div class="person-actions no-print">
+        <div class="act-group">
+          <button class="btn btn-sm" type="button" data-action="assign" data-person="${id}">${icon("move")}${p.assignment ? "Move bed" : "Choose bed"}</button>
+          ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${id}">${icon("out")}Remove from bed</button>` : ""}
+          ${p.assignment ? `<button class="btn btn-sm btn-pin${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${id}" aria-pressed="${!!p.pinned}" aria-label="${p.pinned ? `${esc(p.name)}'s bed is booked — tap to unpin` : `Mark ${esc(p.name)}'s bed as already booked`}" title="${p.pinned ? "Booked — Suggested Allocation leaves this bed alone" : "Mark this bed as already booked"}">${icon("pin")}${p.pinned ? "Booked" : ""}</button>` : ""}
+        </div>
+        <div class="act-group act-side">
+          <span class="pair-row">
+            <label for="pair_${id}">Shares bed with</label>
+            <select id="pair_${id}" data-action="pair" data-person="${id}" aria-label="Bed-sharing partner for ${esc(p.name)}">${pairOptions}</select>
+          </span>
+          <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${id}" aria-label="Delete ${esc(p.name)} from the trip">${icon("trash")}Delete</button>
+        </div>
       </div>
     </li>`;
   }).join("");
@@ -446,17 +473,17 @@ function renderRooms(issues) {
         ? slot.occupants.map((pid) => {
             const p = personById(state, pid);
             const nm = p ? p.name : "Unknown";
-            return `<span class="chip${p && !p.confirmed ? " unconf" : ""}">
-              <span class="nm">${esc(nm)}</span>
-              <button class="x no-print" type="button" data-action="unassign" data-person="${esc(pid)}" aria-label="Remove ${esc(nm)} from ${esc(slot.label)}">×</button>
+            return `<span class="chip${p && !p.confirmed ? " unconf" : ""}" title="${p && !p.confirmed ? `${esc(nm)} — not confirmed yet` : esc(nm)}">
+              ${avatar(nm)}<span class="nm">${esc(nm)}</span>
+              <button class="x no-print" type="button" data-action="unassign" data-person="${esc(pid)}" aria-label="Remove ${esc(nm)} from ${esc(slot.label)}">${icon("x")}</button>
             </span>`;
           }).join("")
         : '<span class="slot-empty">Empty</span>';
 
       return `<li class="slot${filled ? " filled" : ""}${over ? " over" : ""}">
         <div class="slot-top">
-          <span class="slot-label">${esc(slot.label)} <span class="kind">· ${slot.type === "sharedDouble" ? "shares, max 2" : "1 person"}</span></span>
-          <button class="btn btn-sm no-print" type="button" data-action="fill-slot" data-room="${esc(room.id)}" data-slot="${esc(slot.id)}"${canAdd ? "" : " disabled"}>+ Add</button>
+          <span class="slot-label">${icon("bed")}${esc(slot.label)}${slot.type === "sharedDouble" ? ' <span class="kind">· sleeps 2</span>' : ""}</span>
+          <button class="slot-add no-print" type="button" data-action="fill-slot" data-room="${esc(room.id)}" data-slot="${esc(slot.id)}"${canAdd ? "" : " disabled"} aria-label="Put someone in ${esc(room.name)}, ${esc(slot.label)}" title="Put someone here">${icon("plus")}</button>
         </div>
         <div class="occupants">${chips}</div>
       </li>`;
@@ -471,9 +498,9 @@ function renderRooms(issues) {
         <div class="room-title-row">
           <h3 class="room-title" id="rt_${esc(room.id)}">${esc(room.name)}</h3>
           <div class="room-meta">${room.autoFill === false ? '<span class="pill pill-neutral" title="Suggested Allocation never fills this room">Booked separately</span>' : ""}<span class="pill pill-neutral">${occ} / ${cap}</span>${statusPill}</div>
-        </div>${modeHtml}
+        </div>
+        <div class="room-tools no-print">${modeHtml}<button class="btn btn-sm btn-ghost" type="button" data-action="edit-room" data-room="${esc(room.id)}">${icon("pen")}Edit room</button></div>
       </div>
-      <div class="room-mode no-print"><button class="btn btn-sm" type="button" data-action="edit-room" data-room="${esc(room.id)}">Edit room</button></div>
       ${roomIssues.length ? `<p class="room-warn">⚠ ${esc(roomIssues[0].text)}</p>` : ""}
       <ul class="slots">${slotsHtml}</ul>
     </article>`;
@@ -520,14 +547,27 @@ function render() {
    * anyone mid-edit even when the plan is untouched.
    */
   const signature = JSON.stringify([state, ui.filter, ui.search]);
-  if (signature !== lastRenderedSignature) {
-    lastRenderedSignature = signature;
-    withPreservedFocus(() => {
-      renderTabs();
-      renderPeople();
-      renderRooms(issues);
-    });
+  if (signature === lastRenderedSignature) return;
+
+  /*
+   * Someone is typing a note. Rebuilding the list would replace the box they
+   * are typing in — losing what they typed since the last save, and closing
+   * the keyboard on a phone. That was the notes bug. So refresh everything
+   * except the list now, and rebuild the list the moment they leave the box.
+   */
+  if (typingNote()) {
+    renderTabs();
+    renderRooms(issues);
+    return;            // lastRenderedSignature left stale on purpose
   }
+
+  lastRenderedSignature = signature;
+  withPreservedFocus(() => {
+    renderTabs();
+    renderPeople();
+    renderRooms(issues);
+  });
+  el.peopleList.querySelectorAll(".note-input").forEach(autosize);
 }
 
 /* ===============================================================
@@ -896,23 +936,108 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-/*
- * Notes are debounced: typing sends one operation when you pause, not one per
- * keystroke. The local value is applied immediately so the field never lags.
- */
-const noteTimers = new Map();
+/* ===============================================================
+   NOTES
+   ===============================================================
+
+   What's typed lives in noteDrafts until the server has it, so nothing —
+   a save reply, a poll, someone else's change — can overwrite it. One save
+   per note at a time; anything typed during a save is sent straight after.
+*/
+const noteDrafts = new Map();   // personId -> { value, state, timer, inFlight, again }
+
+function typingNote() {
+  return document.activeElement?.getAttribute?.("data-action") === "note";
+}
+
+function autosize(node) {
+  node.style.height = "auto";
+  node.style.height = `${node.scrollHeight + (node.offsetHeight - node.clientHeight)}px`;
+}
+
+function noteStatusText(stateName) {
+  return { saving: "Saving…", saved: "Saved ✓", error: "Not saved — check your connection. It will try again." }[stateName] || "";
+}
+
+function showNoteStatus(personId, stateName) {
+  const node = document.getElementById(`ns_${personId}`);
+  if (!node) return;
+  node.textContent = noteStatusText(stateName);
+  node.className = `note-status${stateName === "saved" ? " saved" : ""}${stateName === "error" ? " err" : ""}`;
+}
+
+async function saveNote(personId) {
+  const d = noteDrafts.get(personId);
+  if (!d) return;
+  clearTimeout(d.timer);
+  if (d.inFlight) { d.again = true; return; }
+
+  const value = d.value;
+  d.inFlight = true;
+  d.state = "saving";
+  showNoteStatus(personId, "saving");
+
+  const ok = await dispatch({ type: "setNote", params: { personId, note: value } }, { optimistic: false });
+
+  d.inFlight = false;
+  if (noteDrafts.get(personId) !== d) return;
+
+  if (!ok) {
+    d.state = "error";
+    showNoteStatus(personId, "error");
+    // Try again shortly; leaving the box also retries.
+    d.timer = setTimeout(() => saveNote(personId), 4000);
+    return;
+  }
+  if (d.again || d.value !== value) {   // they kept typing while it saved
+    d.again = false;
+    saveNote(personId);
+    return;
+  }
+
+  d.state = "saved";
+  showNoteStatus(personId, "saved");
+  // "Saved ✓" stays while they're still in the box. Once they've left, the
+  // draft can go: the plan's own copy is the truth again, so a later edit by
+  // someone else will show.
+  if (!isEditingNote(personId)) noteDrafts.delete(personId);
+}
+
+function isEditingNote(personId) {
+  return typingNote() && document.activeElement.getAttribute("data-person") === personId;
+}
+
 document.addEventListener("input", (ev) => {
   const node = ev.target;
   if (node.getAttribute?.("data-action") !== "note") return;
   const personId = node.getAttribute("data-person");
-  const p = personById(state, personId);
-  if (p) p.note = node.value;
+  autosize(node);
 
-  clearTimeout(noteTimers.get(personId));
-  noteTimers.set(personId, setTimeout(() => {
-    noteTimers.delete(personId);
-    dispatch({ type: "setNote", params: { personId, note: node.value } }, { optimistic: false });
-  }, NOTE_DEBOUNCE_MS));
+  const d = noteDrafts.get(personId) || { value: "", state: "", timer: null, inFlight: false, again: false };
+  d.value = node.value;
+  if (d.state !== "saving") { d.state = "typing"; showNoteStatus(personId, ""); }
+  noteDrafts.set(personId, d);
+
+  clearTimeout(d.timer);
+  d.timer = setTimeout(() => saveNote(personId), NOTE_DEBOUNCE_MS);
+});
+
+document.addEventListener("focusout", (ev) => {
+  const node = ev.target;
+  if (node.getAttribute?.("data-action") !== "note") return;
+  const personId = node.getAttribute("data-person");
+  const d = noteDrafts.get(personId);
+  if (d && (d.state === "typing" || d.state === "error")) saveNote(personId);   // leaving the box saves now
+  else if (d && d.state === "saved") noteDrafts.delete(personId);
+  // Catch up on anything that changed while they typed — after focus has
+  // settled, so tapping straight into another note doesn't get interrupted.
+  setTimeout(render, 0);
+});
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => el.peopleList.querySelectorAll(".note-input").forEach(autosize), 120);
 });
 
 document.addEventListener("change", (ev) => {

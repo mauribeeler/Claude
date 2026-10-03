@@ -56,7 +56,7 @@ export const ROOM_MODES = {
 };
 
 export const MAX_NAME = 40;
-export const MAX_NOTE = 300;
+export const MAX_NOTE = 500;
 export const MAX_PEOPLE = 60;
 
 /* --------------------------------------------------------------------------
