@@ -212,6 +212,9 @@ const el = {
   group: document.getElementById("group"),
   groupNote: document.getElementById("group-note"),
   roomsSub: document.getElementById("rooms-sub"),
+  where: document.getElementById("where"),
+  whereSub: document.getElementById("where-sub"),
+  whereFoot: document.getElementById("where-foot"),
   alerts: document.getElementById("alerts"),
   tabs: document.getElementById("tabs"),
   peopleList: document.getElementById("people-list"),
@@ -350,7 +353,8 @@ function renderSummary(stats) {
       <div class="lab">Beds</div>
       <div class="bar" role="img" aria-label="${stats.occupied} of ${stats.beds} beds taken"><span style="width:${pct}%"></span></div>
     </div>`;
-  el.roomsSub.textContent = `${stats.occupied} of ${stats.beds} beds taken · ${stats.spacesRemaining} free`;
+  el.roomsSub.textContent = "Change layouts and move people between beds.";
+  el.whereSub.textContent = `${stats.occupied} of ${stats.beds} beds taken · ${stats.spacesRemaining} free`;
 }
 
 /* Everyone, by name, in three columns. Tapping a name opens the status sheet. */
@@ -376,6 +380,38 @@ function renderGroup() {
     </div>`;
   }).join("");
   el.groupNote.hidden = !anyFlag;
+}
+
+/* The current allocation, room by room. Each card jumps to that room below. */
+function renderWhere() {
+  el.where.innerHTML = state.rooms.map((room) => {
+    const cap = roomCapacity(room);
+    const occ = roomOccupancy(room);
+    const capCls = occ > cap ? " over" : (occ === cap ? " full" : "");
+    const beds = room.slots.map((slot) => {
+      const people = slot.occupants.map((pid) => personById(state, pid)).filter(Boolean);
+      const who = people.length
+        ? people.map((p) => p.confirmed
+            ? esc(p.name)
+            : `<span class="dot" title="Awaiting reply" aria-hidden="true"></span>${esc(p.name)}<span class="sr-only"> (awaiting reply)</span>`).join(" &amp; ")
+        : "Free";
+      return `<li><span class="bed">${esc(slot.label)}</span><span class="who${people.length ? "" : " free"}">${who}</span></li>`;
+    }).join("");
+    return `<a class="where-room" href="#rt_${esc(room.id)}">
+      <div class="where-head"><span class="where-name">${esc(room.name)}</span><span class="where-cap${capCls}">${occ} of ${cap}</span></div>
+      <ul class="where-beds">${beds}</ul>
+    </a>`;
+  }).join("");
+
+  const unplaced = state.people.filter((p) => !p.declined && !p.assignment);
+  const anyAwaiting = state.people.some((p) => p.assignment && !p.confirmed);
+  el.whereFoot.hidden = !unplaced.length && !anyAwaiting;
+  el.whereFoot.innerHTML = [
+    unplaced.length
+      ? `<span><strong>No bed yet:</strong> ${unplaced.map((p) => esc(p.name) + (p.confirmed ? "" : " (awaiting reply)")).join(", ")}</span>`
+      : "",
+    anyAwaiting ? '<span class="key"><span class="dot" aria-hidden="true"></span>Awaiting reply</span>' : ""
+  ].join("");
 }
 
 function renderAlerts(issues) {
@@ -570,6 +606,7 @@ function render() {
    */
   if (typingNote()) {
     renderGroup();
+    renderWhere();
     renderTabs();
     renderRooms(issues);
     return;            // lastRenderedSignature left stale on purpose
@@ -578,6 +615,7 @@ function render() {
   lastRenderedSignature = signature;
   withPreservedFocus(() => {
     renderGroup();
+    renderWhere();
     renderTabs();
     renderPeople();
     renderRooms(issues);

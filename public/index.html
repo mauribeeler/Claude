@@ -223,6 +223,28 @@ button,input,select,textarea{font:inherit;color:inherit}
 .board-note{padding:0 22px 18px;font-size:12.5px;color:var(--faint);display:flex;align-items:center;gap:7px}
 .board-note .flag{width:7px;height:7px;border-radius:50%;background:var(--await);flex:none}
 
+/* Who sleeps where — the allocation at a glance */
+.where-card{padding:14px}
+.where{column-width:230px;column-gap:12px}
+.where-room{display:block;min-width:0;break-inside:avoid;margin-bottom:12px;padding:16px 18px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper-2);color:inherit;text-decoration:none}
+.where-room:hover{border-color:var(--line-2)}
+.where-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.where-name{font-family:var(--serif);font-size:22px;line-height:1.1;min-width:0;overflow-wrap:anywhere}
+.where-cap{flex:none;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);white-space:nowrap}
+.where-cap.full{color:var(--going)}
+.where-cap.over{color:var(--err)}
+.where-beds{list-style:none;margin:0;padding:0;display:grid}
+.where-beds li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line);font-size:14.5px}
+.where-beds .bed{flex:none;font-size:12px;color:var(--faint)}
+.where-beds .who{min-width:0;text-align:right;font-weight:650;overflow-wrap:anywhere}
+.where-beds .who.free{font-weight:500;font-style:italic;color:var(--faint)}
+.where-beds .dot{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--await);vertical-align:1px}
+.where-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin:14px 4px 2px;font-size:13.5px;color:var(--muted)}
+.where-foot strong{color:var(--ink-2)}
+.where-foot .key{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:12.5px;color:var(--faint)}
+.where-foot .key .dot{width:7px;height:7px;border-radius:50%;background:var(--await)}
+.room-title{scroll-margin-top:20px}
+
 /* ---------------------------------------------------------------
    Alerts
 --------------------------------------------------------------- */
@@ -382,6 +404,7 @@ details.help ol strong{color:var(--ink)}
   .summary{margin:4mm 0 0;box-shadow:none}
   .syncbar,.invite,.people-tools,.person-actions,.room-tools,.slot-add,.chip .x,.actions,.backdrop,.toast,details.help,.note-status,.bar,.btn,.no-print{display:none !important}
   .card,.room{box-shadow:none;break-inside:avoid}
+  .where-room{break-inside:avoid}
   .section{margin-top:6mm}
   .columns{display:block} .columns > * + *{margin-top:6mm}
   .person{break-inside:avoid;padding:6px 10px}
@@ -490,6 +513,20 @@ details.help ol strong{color:var(--ink)}
     <div class="card">
       <div class="board" id="group"></div>
       <p class="board-note" id="group-note" hidden><span class="flag" aria-hidden="true"></span>Going but no bed yet</p>
+    </div>
+  </section>
+
+  <!-- The current allocation, room by room. -->
+  <section class="section" aria-labelledby="where-h">
+    <div class="section-head">
+      <div>
+        <h2 id="where-h">Who sleeps where</h2>
+        <p class="sub" id="where-sub"></p>
+      </div>
+    </div>
+    <div class="card where-card">
+      <div class="where" id="where"></div>
+      <p class="where-foot" id="where-foot" hidden></p>
     </div>
   </section>
 
