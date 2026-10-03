@@ -137,7 +137,131 @@ export function roomOccupancy(room) {
 }
 
 export function makePerson(name) {
-  return { id: uid("p"), name, confirmed: false, note: "", pairWith: null, pinned: false, assignment: null };
+  return {
+    id: uid("p"), name, confirmed: false, note: "", pairWith: null, pinned: false,
+    travel: emptyTravel(), assignment: null
+  };
+}
+
+/* --------------------------------------------------------------------------
+   travel — one outbound and one return leg per person
+   --------------------------------------------------------------------------
+
+   Every field is optional and free to fill in piecemeal: people book flights
+   at different times, and a half-known leg ("easyJet, Sunday, Geneva") is
+   still useful for planning transfers. Plans saved before travel existed have
+   no `travel` at all, so readers go through travelOf() rather than p.travel.
+   -------------------------------------------------------------------------- */
+
+export const LEG_FIELDS = ["flight", "date", "from", "to", "depart", "arrive"];
+
+export function emptyLeg() {
+  return { flight: "", date: "", from: "", to: "", depart: "", arrive: "" };
+}
+
+export function emptyTravel() {
+  return { outbound: emptyLeg(), inbound: emptyLeg() };
+}
+
+const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+const isTime = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+
+/* A date on its own says nothing about how someone travels — it is usually
+   just the default the form filled in — so it does not make a leg "known". */
+export function legIsEmpty(leg) {
+  return !leg || !(leg.flight || leg.from || leg.to || leg.depart || leg.arrive);
+}
+
+function cleanPlace(v) {
+  const s = String(v ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+  return /^[a-z]{3}$/i.test(s) ? s.toUpperCase() : s;   // "gva" -> "GVA"
+}
+
+export function sanitizeLeg(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const leg = {
+    // "ezy 8191" and "EZY8191" are the same flight; normalise so people on it
+    // are grouped together on the flights board.
+    flight: String(r.flight ?? "").toUpperCase().replace(/\s+/g, "").slice(0, 10),
+    date: isDate(String(r.date ?? "")) ? String(r.date) : "",
+    from: cleanPlace(r.from),
+    to: cleanPlace(r.to),
+    depart: isTime(String(r.depart ?? "")) ? String(r.depart) : "",
+    arrive: isTime(String(r.arrive ?? "")) ? String(r.arrive) : ""
+  };
+  if (legIsEmpty(leg)) leg.date = "";
+  return leg;
+}
+
+export function sanitizeTravel(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  return { outbound: sanitizeLeg(r.outbound), inbound: sanitizeLeg(r.inbound) };
+}
+
+export function travelOf(person) {
+  return person && person.travel ? sanitizeTravel(person.travel) : emptyTravel();
+}
+
+export function hasFlights(person) {
+  const t = travelOf(person);
+  return !legIsEmpty(t.outbound) || !legIsEmpty(t.inbound);
+}
+
+/*
+ * The flights board: arrivals and departures by day, with everyone on the
+ * same flight on one line. That is what makes it useful for organising the
+ * transfer up to Zermatt — "who lands at Geneva, when, and with whom".
+ */
+export function travelBoard(state) {
+  const build = (legKey, timeKey) => {
+    const groups = new Map();
+    state.people.forEach((p) => {
+      const leg = travelOf(p)[legKey];
+      if (legIsEmpty(leg)) return;
+      // Prefer the time that matters for this list (landing for arrivals,
+      // take-off for departures) but fall back to the other rather than
+      // showing nothing; timeKind says which one it is.
+      const otherKey = timeKey === "arrive" ? "depart" : "arrive";
+      const time = leg[timeKey] || leg[otherKey] || "";
+      const timeKind = leg[timeKey] ? timeKey : (leg[otherKey] ? otherKey : "");
+      // Same flight on the same day travels together. Without a flight number
+      // there is nothing reliable to group on, so each person stands alone.
+      const key = leg.flight ? `${leg.date}|${leg.flight}` : `${leg.date}|solo|${p.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, { date: leg.date, time, timeKind, flight: leg.flight, from: leg.from, to: leg.to, people: [] });
+      }
+      const g = groups.get(key);
+      g.people.push({ id: p.id, name: p.name });
+      // Fill gaps from whoever entered more detail for the same flight.
+      // A later traveller's landing time beats an earlier one's take-off time.
+      if (time && (!g.time || (g.timeKind !== timeKey && timeKind === timeKey))) {
+        g.time = time;
+        g.timeKind = timeKind;
+      }
+      if (!g.from && leg.from) g.from = leg.from;
+      if (!g.to && leg.to) g.to = leg.to;
+    });
+
+    const sorted = [...groups.values()].sort((a, b) =>
+      (a.date || "9999").localeCompare(b.date || "9999") ||
+      (a.time || "99:99").localeCompare(b.time || "99:99") ||
+      a.flight.localeCompare(b.flight));
+
+    const days = [];
+    sorted.forEach((g) => {
+      const last = days[days.length - 1];
+      if (last && last.date === g.date) last.groups.push(g);
+      else days.push({ date: g.date, groups: [g] });
+    });
+    return days;
+  };
+
+  return {
+    arrivals: build("outbound", "arrive"),
+    departures: build("inbound", "depart"),
+    withFlights: state.people.filter(hasFlights).length,
+    missing: state.people.filter((p) => !hasFlights(p)).map((p) => ({ id: p.id, name: p.name }))
+  };
 }
 
 export function roomFromBlueprint(b) {
@@ -414,6 +538,7 @@ export function normalizePlan(data) {
       note: typeof raw.note === "string" ? raw.note.slice(0, MAX_NOTE) : "",
       pairWith: typeof raw.pairWith === "string" ? raw.pairWith : null,
       pinned: raw.pinned === true,
+      travel: sanitizeTravel(raw.travel),
       assignment: null
     };
   });
@@ -720,12 +845,46 @@ const OPS = {
     return "";
   },
 
-  addPerson(state, { name }) {
+  /* Details are optional, so someone can be added with their flight in one go
+     rather than added first and edited after. */
+  addPerson(state, { name, confirmed, note, travel }) {
     const clean = String(name ?? "").trim().slice(0, MAX_NAME);
     if (!clean) throw new PlanError("A name is required.");
     if (state.people.length >= MAX_PEOPLE) throw new PlanError(`This plan is capped at ${MAX_PEOPLE} people.`);
-    state.people.push(makePerson(clean));
+    const person = makePerson(clean);
+    person.confirmed = confirmed === true;
+    if (note !== undefined) person.note = String(note ?? "").slice(0, MAX_NOTE);
+    if (travel !== undefined) person.travel = sanitizeTravel(travel);
+    state.people.push(person);
     return `${clean} added to the trip.`;
+  },
+
+  /*
+   * Change any of a person's details. Only the fields sent are touched, so
+   * two people editing different things about the same traveller (one fixing
+   * the flight, one adding a note) both keep their change.
+   */
+  updatePerson(state, { personId, name, confirmed, note, travel }) {
+    const p = personById(state, personId);
+    if (!p) throw new PlanError("That person is no longer on the trip — someone may have just removed them.", 409);
+
+    if (name !== undefined) {
+      const clean = String(name ?? "").trim().slice(0, MAX_NAME);
+      if (!clean) throw new PlanError("A name is required.");
+      p.name = clean;
+    }
+    if (confirmed !== undefined) p.confirmed = confirmed === true;
+    if (note !== undefined) p.note = String(note ?? "").slice(0, MAX_NOTE);
+    if (travel !== undefined) {
+      const current = travelOf(p);
+      const next = travel && typeof travel === "object" ? travel : {};
+      // A single leg can be sent on its own without wiping the other.
+      p.travel = sanitizeTravel({
+        outbound: next.outbound !== undefined ? next.outbound : current.outbound,
+        inbound: next.inbound !== undefined ? next.inbound : current.inbound
+      });
+    }
+    return `${p.name}'s details saved.`;
   },
 
   deletePerson(state, { personId }) {

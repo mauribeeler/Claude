@@ -12,7 +12,8 @@ import test from "node:test";
 import {
   initialState, applyOp, getStats, validateState, createSlotsForRoom,
   personById, roomById, normalizePlan, syncAssignments, PlanError, clone,
-  roomCapacity, roomOccupancy, migratePlan
+  roomCapacity, roomOccupancy, migratePlan,
+  travelOf, hasFlights, travelBoard, sanitizeLeg
 } from "../public/plan-core.js";
 
 import { handleRequest } from "../netlify/functions/plan.mjs";
@@ -505,6 +506,191 @@ test("export/import round trips without loss", () => {
 
 test("unknown operations are refused", () => {
   assert.throws(() => applyOp(initialState(), { type: "drop database" }), PlanError);
+});
+
+/* ===========================================================================
+   People details and flights
+   =========================================================================== */
+
+const outLeg = (extra = {}) => ({ flight: "EZY8191", date: "2027-01-31", from: "LGW", to: "GVA", depart: "07:10", arrive: "09:55", ...extra });
+
+test("a person can be added with their flight in one step", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addPerson", params: { name: "Bruno", confirmed: true, note: "Vegetarian",
+    travel: { outbound: outLeg() } } }).state;
+  const bruno = s.people.at(-1);
+  assert.equal(bruno.name, "Bruno");
+  assert.equal(bruno.confirmed, true);
+  assert.equal(bruno.note, "Vegetarian");
+  assert.equal(travelOf(bruno).outbound.flight, "EZY8191");
+  assert.equal(hasFlights(bruno), true);
+});
+
+test("adding with just a name still works, with no flights", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
+  assert.equal(hasFlights(s.people.at(-1)), false);
+  assert.equal(s.people.at(-1).confirmed, false);
+});
+
+test("a person can be renamed, and a blank name is refused", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "updatePerson", params: { personId: id, name: "  Amelia R  " } }).state;
+  assert.equal(personById(s, id).name, "Amelia R");
+  assert.throws(() => applyOp(s, { type: "updatePerson", params: { personId: id, name: "   " } }), PlanError);
+});
+
+test("updating one field leaves every other field alone", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "updatePerson", params: { personId: id, confirmed: true, note: "Snores",
+    travel: { outbound: outLeg(), inbound: { flight: "BA735", date: "2027-02-05", depart: "18:20" } } } }).state;
+
+  // Someone else only changes the return flight...
+  s = applyOp(s, { type: "updatePerson", params: { personId: id, travel: { inbound: { flight: "BA737" } } } }).state;
+  const p = personById(s, id);
+  assert.equal(travelOf(p).inbound.flight, "BA737");
+  assert.equal(travelOf(p).outbound.flight, "EZY8191", "outbound untouched");
+  assert.equal(p.note, "Snores", "note untouched");
+  assert.equal(p.confirmed, true, "status untouched");
+});
+
+test("flight details are tidied as they are saved", () => {
+  const leg = sanitizeLeg({ flight: " ezy 8191 ", date: "31/01/2027", from: "lgw", to: "Geneva  airport",
+    depart: "7:10", arrive: "09:55" });
+  assert.equal(leg.flight, "EZY8191", "spaces removed, upper-cased so it groups");
+  assert.equal(leg.date, "", "a UK-format date is not silently misread");
+  assert.equal(leg.from, "LGW", "three-letter codes upper-cased");
+  assert.equal(leg.to, "Geneva airport", "longer names kept as typed");
+  assert.equal(leg.depart, "", "an invalid time is dropped rather than stored");
+  assert.equal(leg.arrive, "09:55");
+});
+
+test("a date on its own does not count as a flight", () => {
+  const leg = sanitizeLeg({ date: "2027-01-31" });
+  assert.equal(leg.date, "", "an untouched default date is not kept");
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "updatePerson", params: { personId: id, travel: { outbound: { date: "2027-01-31" } } } }).state;
+  assert.equal(hasFlights(personById(s, id)), false);
+});
+
+test("people on the same flight are grouped on the arrivals board", () => {
+  let s = initialState();
+  const [a, b, c] = s.people;
+  s = applyOp(s, { type: "updatePerson", params: { personId: a.id, travel: { outbound: outLeg() } } }).state;
+  // Same flight typed differently, with less detail.
+  s = applyOp(s, { type: "updatePerson", params: { personId: b.id, travel: { outbound: { flight: "ezy 8191", date: "2027-01-31" } } } }).state;
+  s = applyOp(s, { type: "updatePerson", params: { personId: c.id, travel: { outbound: outLeg({ flight: "BA2742", arrive: "08:30" }) } } }).state;
+
+  const board = travelBoard(s);
+  assert.equal(board.arrivals.length, 1, "one day");
+  const groups = board.arrivals[0].groups;
+  assert.deepEqual(groups.map((g) => g.flight), ["BA2742", "EZY8191"], "sorted by landing time");
+  const ezy = groups.find((g) => g.flight === "EZY8191");
+  assert.deepEqual(ezy.people.map((x) => x.name).sort(), [a.name, b.name].sort());
+  assert.equal(ezy.from, "LGW", "route filled from whoever entered it");
+  assert.equal(ezy.time, "09:55");
+  assert.equal(ezy.timeKind, "arrive");
+});
+
+test("a landing time beats a take-off time for the same flight", () => {
+  let s = initialState();
+  const [a, b] = s.people;
+  s = applyOp(s, { type: "updatePerson", params: { personId: a.id, travel: { outbound: { flight: "U2123", date: "2027-01-31", depart: "06:00" } } } }).state;
+  s = applyOp(s, { type: "updatePerson", params: { personId: b.id, travel: { outbound: { flight: "U2123", date: "2027-01-31", arrive: "08:45" } } } }).state;
+  const g = travelBoard(s).arrivals[0].groups[0];
+  assert.equal(g.time, "08:45");
+  assert.equal(g.timeKind, "arrive");
+});
+
+test("flights without a number are listed individually, not lumped together", () => {
+  let s = initialState();
+  const [a, b] = s.people;
+  const leg = { date: "2027-01-31", from: "MAN", to: "ZRH" };
+  s = applyOp(s, { type: "updatePerson", params: { personId: a.id, travel: { outbound: leg } } }).state;
+  s = applyOp(s, { type: "updatePerson", params: { personId: b.id, travel: { outbound: leg } } }).state;
+  assert.equal(travelBoard(s).arrivals[0].groups.length, 2);
+});
+
+test("the board counts who still has no flights", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "updatePerson", params: { personId: s.people[0].id, travel: { inbound: { flight: "BA735", date: "2027-02-05" } } } }).state;
+  const board = travelBoard(s);
+  assert.equal(board.withFlights, 1);
+  assert.equal(board.missing.length, s.people.length - 1);
+  assert.equal(board.departures[0].groups[0].flight, "BA735");
+  assert.equal(board.arrivals.length, 0);
+});
+
+test("editing someone who was just deleted is refused clearly", () => {
+  const s = initialState();
+  assert.throws(
+    () => applyOp(s, { type: "updatePerson", params: { personId: "gone", note: "x" } }),
+    (e) => e instanceof PlanError && e.status === 409
+  );
+});
+
+test("flight details survive an export/import round trip", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "updatePerson", params: { personId: id, travel: { outbound: outLeg() } } }).state;
+  const back = normalizePlan(JSON.parse(JSON.stringify(s)));
+  assert.deepEqual(travelOf(personById(back, id)).outbound, outLeg());
+});
+
+/* ===========================================================================
+   The plan saved by the version currently live on Netlify
+   =========================================================================== */
+
+/* People exactly as the deployed build saved them: no `travel` field at all. */
+function deployedEraPlan() {
+  const s = initialState();
+  s.people.forEach((p) => { delete p.travel; p.note = p.name === "Toby" ? "Flying EZY8191 Sun" : ""; });
+  return s;
+}
+
+test("a plan saved before flights existed reads as 'no flights yet'", () => {
+  const s = deployedEraPlan();
+  assert.equal(travelBoard(s).withFlights, 0);
+  assert.equal(travelBoard(s).missing.length, s.people.length);
+  assert.doesNotThrow(() => validateState(s));
+});
+
+test("adding a flight to an old-format person only touches that person", () => {
+  let s = deployedEraPlan();
+  const toby = s.people.find((p) => p.name === "Toby");
+  s = applyOp(s, { type: "updatePerson", params: { personId: toby.id, travel: { outbound: outLeg() } } }).state;
+  const after = personById(s, toby.id);
+  assert.equal(travelOf(after).outbound.flight, "EZY8191");
+  assert.equal(after.note, "Flying EZY8191 Sun", "their old free-text note is kept");
+  assert.equal(s.people.filter((p) => p.travel).length, 1, "nobody else is rewritten");
+});
+
+test("the live server accepts the new edit against an old saved plan", async () => {
+  const store = fakeStore();
+  const old = deployedEraPlan();
+  await store.setJSON("plan-2027", { state: old, meta: {} });
+  const toby = old.people.find((p) => p.name === "Toby");
+
+  const { res, body } = await post(store, { type: "updatePerson", params: { personId: toby.id, travel: { outbound: outLeg() } } }, "Toby");
+  assert.equal(res.status, 200);
+  assert.equal(travelOf(body.state.people.find((p) => p.id === toby.id)).outbound.arrive, "09:55");
+  assert.equal(body.state.people.length, old.people.length, "nobody added or lost");
+});
+
+test("two people editing different travellers' flights at once both keep theirs", async () => {
+  const store = fakeStore();
+  const seed = await (await handleRequest(req("GET"), store)).json();
+  const [a, b] = seed.state.people;
+  await Promise.all([
+    post(store, { type: "updatePerson", params: { personId: a.id, travel: { outbound: outLeg() } } }, "A"),
+    post(store, { type: "updatePerson", params: { personId: b.id, travel: { inbound: { flight: "BA735", date: "2027-02-05" } } } }, "B")
+  ]);
+  const final = await (await handleRequest(req("GET"), store)).json();
+  assert.equal(travelOf(final.state.people.find((p) => p.id === a.id)).outbound.flight, "EZY8191");
+  assert.equal(travelOf(final.state.people.find((p) => p.id === b.id)).inbound.flight, "BA735");
 });
 
 /* ===========================================================================

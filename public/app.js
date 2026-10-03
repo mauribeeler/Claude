@@ -1,7 +1,8 @@
 import {
   applyOp, initialState, getStats, validateState, syncAssignments,
   personById, roomById, slotById, assignmentLabel, roomCapacity, roomOccupancy,
-  ROOM_MODES, PlanError, clone
+  ROOM_MODES, PlanError, clone,
+  travelOf, hasFlights, travelBoard, legIsEmpty, sanitizeLeg, LEG_FIELDS
 } from "./plan-core.js";
 
 /* ===============================================================
@@ -25,7 +26,6 @@ let lastRenderedSignature = "";
 const ui = { filter: "all", search: "" };
 
 const POLL_MS = 6000;
-const NOTE_DEBOUNCE_MS = 500;
 const API = "/api/plan";
 
 /* The viewer's own name and the shared passcode are the only things kept in
@@ -214,7 +214,6 @@ const el = {
   peopleCount: document.getElementById("people-count"),
   rooms: document.getElementById("rooms"),
   search: document.getElementById("search"),
-  newPerson: document.getElementById("new-person"),
   backdrop: document.getElementById("backdrop"),
   modal: document.getElementById("modal"),
   modalTitle: document.getElementById("modal-title"),
@@ -240,8 +239,8 @@ const FILTERS = [
   { key: "all", label: "All" },
   { key: "confirmed", label: "Confirmed" },
   { key: "notConfirmed", label: "Not confirmed" },
-  { key: "assigned", label: "Assigned" },
-  { key: "unassigned", label: "Unassigned" }
+  { key: "unassigned", label: "No bed" },
+  { key: "noFlights", label: "No flights" }
 ];
 
 function matchesFilter(p, key) {
@@ -249,16 +248,41 @@ function matchesFilter(p, key) {
   if (key === "notConfirmed") return !p.confirmed;
   if (key === "assigned") return !!p.assignment;
   if (key === "unassigned") return !p.assignment;
+  if (key === "noFlights") return !hasFlights(p);
   return true;
+}
+
+/* Search matches flight numbers and airports too, so "EZY8191" or "GVA"
+   finds everyone on that flight or landing there. */
+function searchText(p) {
+  const t = travelOf(p);
+  return [p.name, p.note, t.outbound.flight, t.outbound.from, t.outbound.to,
+          t.inbound.flight, t.inbound.from, t.inbound.to].join(" ").toLowerCase();
 }
 
 function visiblePeople() {
   const q = ui.search.trim().toLowerCase();
   return state.people.filter((p) => {
     if (!matchesFilter(p, ui.filter)) return false;
-    if (!q) return true;
-    return p.name.toLowerCase().includes(q) || (p.note || "").toLowerCase().includes(q);
+    return !q || searchText(p).includes(q);
   });
+}
+
+/* "Sun 31 Jan" */
+function fmtDay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/* "Sun 31 Jan · EZY8191 LGW → GVA · lands 09:55" — whatever is known, in that order. */
+function legSummary(leg, direction) {
+  if (legIsEmpty(leg)) return "";
+  const route = leg.from || leg.to ? `${leg.from || "?"} → ${leg.to || "?"}` : "";
+  const time = direction === "outbound"
+    ? (leg.arrive ? `lands ${leg.arrive}` : leg.depart ? `departs ${leg.depart}` : "")
+    : (leg.depart ? `departs ${leg.depart}` : leg.arrive ? `lands ${leg.arrive}` : "");
+  return [fmtDay(leg.date), [leg.flight, route].filter(Boolean).join(" "), time].filter(Boolean).join(" · ");
 }
 
 function relativeTime(iso) {
@@ -317,7 +341,7 @@ function renderSyncBar() {
     bits.push(`last change by ${esc(meta.updatedBy)} ${esc(relativeTime(meta.updatedAt))}`);
   }
   if (syncMode === "local") {
-    bits.push("changes are lost when you close this tab — use Export JSON to keep them");
+    bits.push("changes are lost when you close this tab — Print / PDF keeps a copy");
   }
   el.syncWho.innerHTML = bits.join(" · ");
 }
@@ -362,8 +386,8 @@ function renderTabs() {
     all: state.people.length,
     confirmed: state.people.filter((p) => p.confirmed).length,
     notConfirmed: state.people.filter((p) => !p.confirmed).length,
-    assigned: state.people.filter((p) => !!p.assignment).length,
-    unassigned: state.people.filter((p) => !p.assignment).length
+    unassigned: state.people.filter((p) => !p.assignment).length,
+    noFlights: state.people.filter((p) => !hasFlights(p)).length
   };
   el.tabs.innerHTML = FILTERS.map((f) => {
     const on = ui.filter === f.key;
@@ -378,45 +402,96 @@ function renderPeople() {
     : `${list.length} of ${state.people.length}`;
 
   if (!list.length) {
-    el.peopleList.innerHTML = '<li class="empty">No one matches that filter.</li>';
+    el.peopleList.innerHTML = state.people.length
+      ? '<li class="empty">No one matches that filter.</li>'
+      : '<li class="empty">Nobody on the list yet. Tap <strong>+ Add person</strong> to start.</li>';
     return;
   }
 
+  /*
+   * One tappable summary per person; everything else (flights, notes, bed
+   * sharing, delete) lives in the details sheet. The row only keeps the two
+   * things people do constantly: confirm, and choose a bed.
+   */
   el.peopleList.innerHTML = list.map((p) => {
     const where = assignmentLabel(state, p);
-    const flag = p.confirmed && !p.assignment;
+    const t = travelOf(p);
+    const out = legSummary(t.outbound, "outbound");
+    const home = legSummary(t.inbound, "inbound");
+    const id = esc(p.id);
 
-    const pairOptions = ['<option value="">— nobody —</option>'].concat(
-      state.people.filter((o) => o.id !== p.id).map((o) =>
-        `<option value="${esc(o.id)}"${p.pairWith === o.id ? " selected" : ""}>${esc(o.name)}</option>`)
-    ).join("");
+    const flightLines = out || home
+      ? `${out ? `<span class="person-line"><span class="lbl">Out</span><span>${esc(out)}</span></span>` : ""}
+         ${home ? `<span class="person-line"><span class="lbl">Home</span><span>${esc(home)}</span></span>` : ""}`
+      : `<span class="person-line none"><span class="lbl">Flights</span><span>Not added yet</span></span>`;
 
-    return `<li class="person${flag ? " flag" : ""}" data-person="${esc(p.id)}">
-      <div class="person-top">
-        <div class="person-id">
-          <div class="person-name">${esc(p.name)}</div>
-          <div class="person-where${where ? "" : " none"}">${where ? esc(where) : "No bed assigned"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</div>
-        </div>
-        <button class="toggle" type="button" data-action="toggle-confirm" data-person="${esc(p.id)}" aria-pressed="${p.confirmed}">
+    // The summary below the name is also tappable, for convenience on phones.
+    // Keyboard users reach the same sheet through the name button, so the
+    // summary itself doesn't need to be a second focusable control.
+    return `<li class="person${p.confirmed && !p.assignment ? " flag" : ""}" data-person="${id}">
+      <div class="person-head">
+        <button class="person-name" type="button" data-action="edit-person" data-person="${id}" title="Open ${esc(p.name)}'s details">${esc(p.name)}</button>
+        <button class="toggle" type="button" data-action="toggle-confirm" data-person="${id}" aria-pressed="${p.confirmed}" aria-label="${esc(p.name)}: ${p.confirmed ? "confirmed, tap to unconfirm" : "not confirmed, tap to confirm"}">
           <span class="dot" aria-hidden="true"></span>${p.confirmed ? "Confirmed" : "Not confirmed"}
         </button>
       </div>
-      <div class="person-actions no-print">
-        <button class="btn btn-sm" type="button" data-action="assign" data-person="${esc(p.id)}">${p.assignment ? "Move" : "Assign"}</button>
-        ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${esc(p.id)}">Remove from bed</button>` : ""}
-        ${p.assignment ? `<button class="btn btn-sm${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${esc(p.id)}" aria-pressed="${!!p.pinned}" title="${p.pinned ? "Booked — allocation leaves this bed alone" : "Pin this bed as already booked"}">${p.pinned ? "📌 Booked" : "Pin as booked"}</button>` : ""}
-        <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${esc(p.id)}">Delete</button>
-        <span class="pair-row">
-          <label for="pair_${esc(p.id)}">Shares bed with</label>
-          <select id="pair_${esc(p.id)}" data-action="pair" data-person="${esc(p.id)}" aria-label="Bed-sharing partner for ${esc(p.name)}">${pairOptions}</select>
-        </span>
+      <div class="person-details" data-action="edit-person" data-person="${id}">
+        <span class="person-line${where ? "" : " warn"}"><span class="lbl">Bed</span><span>${where ? esc(where) : "No bed yet"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</span></span>
+        ${flightLines}
+        ${p.note ? `<span class="person-line note"><span class="lbl">Note</span><span>${esc(p.note)}</span></span>` : ""}
       </div>
-      <div class="person-note">
-        <label class="sr-only" for="note_${esc(p.id)}">Note for ${esc(p.name)}</label>
-        <input class="note-input" id="note_${esc(p.id)}" type="text" maxlength="300" placeholder="Note — flights, arrival day, snores…" value="${esc(p.note)}" data-action="note" data-person="${esc(p.id)}">
+      <div class="person-actions no-print">
+        <button class="btn btn-sm" type="button" data-action="edit-person" data-person="${id}">Edit details &amp; flights</button>
+        <button class="btn btn-sm" type="button" data-action="assign" data-person="${id}">${p.assignment ? "Move bed" : "Choose bed"}</button>
+        <button class="btn btn-sm btn-quiet-danger" type="button" data-action="delete-person" data-person="${id}" aria-label="Delete ${esc(p.name)}">Delete</button>
       </div>
     </li>`;
   }).join("");
+}
+
+/* Arrivals and departures by day, with everyone on the same flight grouped,
+   so transfers up to Zermatt can be planned from one screen. */
+function renderFlights() {
+  const node = document.getElementById("flights");
+  const countNode = document.getElementById("flights-count");
+  if (!node) return;
+  const board = travelBoard(state);
+  const total = state.people.length;
+
+  countNode.textContent = `${board.withFlights} of ${total} added`;
+  countNode.className = `pill ${board.withFlights === total && total ? "pill-ok" : "pill-neutral"}`;
+
+  const names = (people) => people.map((x) =>
+    `<button class="linkish" type="button" data-action="edit-person" data-person="${esc(x.id)}">${esc(x.name)}</button>`
+  ).join("");
+
+  const column = (title, days, kindDefault, emptyText) => {
+    const body = days.length ? days.map((day) => `
+      <div class="board-day">
+        <h4>${esc(day.date ? fmtDay(day.date) : "Date not set")}</h4>
+        <ul class="board-list">
+          ${day.groups.map((g) => `
+            <li class="board-row">
+              <span class="time">${esc(g.time || "--:--")}<small>${g.time ? (g.timeKind === "arrive" ? "lands" : "departs") : "time tbc"}</small></span>
+              <span class="what">${g.flight ? `<strong>${esc(g.flight)}</strong> ` : ""}${g.from || g.to ? esc(`${g.from || "?"} → ${g.to || "?"}`) : (g.flight ? "" : "Flight details partial")}</span>
+              <span class="who">${names(g.people)}<span class="count">${g.people.length > 1 ? `${g.people.length} people` : ""}</span></span>
+            </li>`).join("")}
+        </ul>
+      </div>`).join("") : `<p class="board-empty">${emptyText}</p>`;
+    return `<div class="board-col"><h3>${title}</h3>${body}</div>`;
+  };
+
+  if (!board.withFlights) {
+    node.innerHTML = `<p class="board-empty">No flights added yet. Tap anyone in the list and fill in <strong>Flying out</strong> and <strong>Flying home</strong> — people on the same flight are grouped here automatically, which makes planning the transfer up to Zermatt much easier.</p>`;
+    return;
+  }
+
+  node.innerHTML = `
+    <div class="board">
+      ${column("Arrivals", board.arrivals, "arrive", "No outbound flights yet.")}
+      ${column("Departures", board.departures, "depart", "No return flights yet.")}
+    </div>
+    ${board.missing.length ? `<p class="missing"><strong>Still to add flights (${board.missing.length}):</strong> ${names(board.missing)}</p>` : `<p class="missing all-in">Everyone's flights are in.</p>`}`;
 }
 
 function renderRooms(issues) {
@@ -526,6 +601,7 @@ function render() {
       renderTabs();
       renderPeople();
       renderRooms(issues);
+      renderFlights();
     });
   }
 }
@@ -552,6 +628,7 @@ function openModal(opts) {
     else closeModal();
   };
 
+  el.modalBody.oninput = null;
   el.modalBody.onclick = (ev) => {
     const pick = ev.target.closest("[data-pick]");
     if (!pick || pick.disabled) return;
@@ -571,6 +648,7 @@ function closeModal() {
   el.modalBody.innerHTML = "";
   el.modalFoot.innerHTML = "";
   el.modalBody.onclick = null;
+  el.modalBody.oninput = null;
   el.modalFoot.onclick = null;
   document.body.style.overflow = "";
   if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch { /* gone */ } }
@@ -852,6 +930,213 @@ function openRoomEditor(roomId) {
 }
 
 /* ===============================================================
+   8. PERSON DETAILS SHEET — add, edit and delete people in one place
+   =============================================================== */
+
+const AIRPORTS = [
+  ["GVA", "Geneva"], ["ZRH", "Zurich"], ["BSL", "Basel"], ["MXP", "Milan Malpensa"],
+  ["LHR", "London Heathrow"], ["LGW", "London Gatwick"], ["STN", "London Stansted"],
+  ["LTN", "London Luton"], ["LCY", "London City"], ["BRS", "Bristol"], ["MAN", "Manchester"],
+  ["BHX", "Birmingham"], ["EDI", "Edinburgh"], ["GLA", "Glasgow"], ["DUB", "Dublin"],
+  ["SOU", "Southampton"], ["EXT", "Exeter"]
+];
+
+const LEG_LABELS = {
+  flight: ["Flight no.", "text", "e.g. EZY8191"],
+  date: ["Date", "date", ""],
+  from: ["From", "text", "e.g. LGW"],
+  to: ["To", "text", "e.g. GVA"],
+  depart: ["Departs", "time", ""],
+  arrive: ["Lands", "time", ""]
+};
+
+function legFieldsHtml(legKey, leg) {
+  return LEG_FIELDS.map((f) => {
+    const [label, type, placeholder] = LEG_LABELS[f];
+    const id = `pe-${legKey}-${f}`;
+    const extra = type === "text"
+      ? ` placeholder="${esc(placeholder)}" autocomplete="off" autocapitalize="characters"${f === "from" || f === "to" ? ' list="pe-airports"' : ""} maxlength="${f === "flight" ? 12 : 40}"`
+      : "";
+    return `<div class="field"><label for="${id}">${label}</label>
+      <input class="input" id="${id}" type="${type}" value="${esc(leg[f])}" data-leg="${legKey}" data-field="${f}"${extra}></div>`;
+  }).join("");
+}
+
+function readLeg(legKey) {
+  const leg = {};
+  LEG_FIELDS.forEach((f) => { leg[f] = document.getElementById(`pe-${legKey}-${f}`)?.value ?? ""; });
+  return sanitizeLeg(leg);
+}
+
+/**
+ * The details sheet. personId = null opens it for adding someone new.
+ * On save it sends only what actually changed, so it can't overwrite an edit
+ * someone else made to a different field while this sheet was open.
+ */
+function openPersonEditor(personId) {
+  const person = personId ? personById(state, personId) : null;
+  if (personId && !person) { toast("That person is no longer on the trip."); return; }
+  const isNew = !person;
+
+  const snap = person ? {
+    name: person.name,
+    confirmed: !!person.confirmed,
+    note: person.note || "",
+    travel: travelOf(person),
+    pairWith: person.pairWith || "",
+    pinned: !!person.pinned
+  } : { name: "", confirmed: false, note: "", travel: travelOf(null), pairWith: "", pinned: false };
+
+  const where = person ? assignmentLabel(state, person) : null;
+  const pairOptions = ['<option value="">Nobody</option>'].concat(
+    state.people.filter((o) => !person || o.id !== person.id).map((o) =>
+      `<option value="${esc(o.id)}"${snap.pairWith === o.id ? " selected" : ""}>${esc(o.name)}</option>`)
+  ).join("");
+
+  const bedSection = isNew ? "" : `
+    <fieldset class="sheet-group">
+      <legend>Bed</legend>
+      <p class="sheet-text">${where ? esc(where) : "Not in a bed yet — use <strong>Choose bed</strong> in the list."}</p>
+      ${person.assignment ? `<label class="check"><input type="checkbox" id="pe-pinned"${snap.pinned ? " checked" : ""}>
+        <span>Bed is already booked — Suggested Allocation won't move ${esc(person.name)}</span></label>` : ""}
+      <div class="field"><label for="pe-pair">Shares a bed with</label>
+        <select class="input" id="pe-pair">${pairOptions}</select>
+        <span class="field-help">Couples are put in a double bed by Suggested Allocation.</span></div>
+    </fieldset>`;
+
+  openModal({
+    title: isNew ? "Add a person" : person.name,
+    bodyHtml: `
+      <div class="field"><label for="pe-name">Name</label>
+        <input class="input" id="pe-name" type="text" maxlength="40" autocomplete="off" value="${esc(snap.name)}" placeholder="Their name">
+        <span class="field-msg" id="pe-name-msg" role="status"></span></div>
+
+      <fieldset class="sheet-group">
+        <legend>Coming?</legend>
+        <div class="seg">
+          <label><input type="radio" name="pe-status" value="yes"${snap.confirmed ? " checked" : ""}><span>Confirmed</span></label>
+          <label><input type="radio" name="pe-status" value="no"${snap.confirmed ? "" : " checked"}><span>Not confirmed yet</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="sheet-group">
+        <legend>Flying out <button class="linkish leg-clear" type="button" data-clear-leg="outbound">Clear</button></legend>
+        <div class="leg-grid">${legFieldsHtml("outbound", snap.travel.outbound)}</div>
+      </fieldset>
+
+      <fieldset class="sheet-group">
+        <legend>Flying home <button class="linkish leg-clear" type="button" data-clear-leg="inbound">Clear</button></legend>
+        <div class="leg-grid">${legFieldsHtml("inbound", snap.travel.inbound)}</div>
+      </fieldset>
+
+      <div class="field"><label for="pe-note">Notes</label>
+        <textarea class="input note-area" id="pe-note" maxlength="300" placeholder="Driving instead, arriving late, needs a lower bunk…">${esc(snap.note)}</textarea></div>
+
+      ${bedSection}
+
+      <datalist id="pe-airports">${AIRPORTS.map(([code, city]) => `<option value="${code}">${city}</option>`).join("")}</datalist>`,
+    buttons: [
+      ...(isNew ? [] : [{ label: "Delete person", variant: "btn-danger", onClick: () => confirmDelete(person.id) }]),
+      { label: "Cancel", onClick: closeModal },
+      { label: isNew ? "Add to trip" : "Save", variant: "btn-primary", onClick: save }
+    ]
+  });
+
+  const nameInput = document.getElementById("pe-name");
+  const nameMsg = document.getElementById("pe-name-msg");
+
+  // Duplicate names are allowed (two Toms happen) but worth a heads-up.
+  const checkName = () => {
+    const v = nameInput.value.trim().toLowerCase();
+    const clash = v && state.people.some((o) => o.name.trim().toLowerCase() === v && (!person || o.id !== person.id));
+    nameMsg.textContent = clash ? `There's already someone called ${nameInput.value.trim()} — fine if it's a different person.` : "";
+    nameMsg.className = "field-msg warn";
+  };
+  nameInput.addEventListener("input", checkName);
+
+  // Typing any flight detail fills the date with the trip's first or last day,
+  // which is right for almost everyone and saves a fiddly date picker.
+  // Property handlers (not addEventListener) so they're replaced, not stacked,
+  // each time a sheet opens; closeModal clears them.
+  el.modalBody.oninput = (ev) => {
+    const legKey = ev.target.getAttribute?.("data-leg");
+    const field = ev.target.getAttribute?.("data-field");
+    if (!legKey || field === "date" || !ev.target.value) return;
+    const dateInput = document.getElementById(`pe-${legKey}-date`);
+    if (dateInput && !dateInput.value) {
+      dateInput.value = legKey === "outbound" ? (state.startDate || "") : (state.endDate || "");
+    }
+  };
+
+  el.modalBody.onclick = (ev) => {
+    const legKey = ev.target.getAttribute?.("data-clear-leg");
+    if (!legKey) return;
+    LEG_FIELDS.forEach((f) => { const n = document.getElementById(`pe-${legKey}-${f}`); if (n) n.value = ""; });
+    document.getElementById(`pe-${legKey}-flight`)?.focus();
+  };
+
+  if (isNew) nameInput.focus();
+
+  async function save() {
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameMsg.textContent = "A name is needed.";
+      nameMsg.className = "field-msg err";
+      nameInput.focus();
+      return;
+    }
+    const confirmed = document.querySelector('input[name="pe-status"]:checked')?.value === "yes";
+    const note = document.getElementById("pe-note").value;
+    const travel = { outbound: readLeg("outbound"), inbound: readLeg("inbound") };
+
+    if (isNew) {
+      closeModal();
+      await dispatch({ type: "addPerson", params: { name, confirmed, note, travel } }, { optimistic: false });
+      return;
+    }
+
+    const patch = {};
+    if (name !== snap.name) patch.name = name;
+    if (confirmed !== snap.confirmed) patch.confirmed = confirmed;
+    if (note !== snap.note) patch.note = note;
+    const legChanged = (k) => JSON.stringify(travel[k]) !== JSON.stringify(snap.travel[k]);
+    if (legChanged("outbound") || legChanged("inbound")) {
+      patch.travel = {};
+      if (legChanged("outbound")) patch.travel.outbound = travel.outbound;
+      if (legChanged("inbound")) patch.travel.inbound = travel.inbound;
+    }
+
+    const ops = [];
+    if (Object.keys(patch).length) ops.push({ type: "updatePerson", params: { personId: person.id, ...patch } });
+
+    const pairSel = document.getElementById("pe-pair");
+    if (pairSel && pairSel.value !== snap.pairWith) {
+      ops.push({ type: "setPair", params: { personId: person.id, otherId: pairSel.value || null } });
+    }
+    const pinBox = document.getElementById("pe-pinned");
+    if (pinBox && pinBox.checked !== snap.pinned) {
+      ops.push({ type: "setPinned", params: { personId: person.id, pinned: pinBox.checked } });
+    }
+
+    closeModal();
+    if (!ops.length) { toast("Nothing changed."); return; }
+    // One at a time, so each lands on top of the last rather than racing it.
+    for (const op of ops) await dispatch(op);
+  }
+}
+
+function confirmDelete(personId) {
+  const dp = personById(state, personId);
+  if (!dp) return;
+  confirmDialog(
+    `Delete ${dp.name}?`,
+    `${dp.name} will be taken off the trip, out of any bed, and their flight details removed${syncMode === "shared" ? " — for everyone" : ""}. This can't be undone.`,
+    "Delete",
+    () => dispatch({ type: "deletePerson", params: { personId } })
+  );
+}
+
+/* ===============================================================
    9. EVENT HANDLERS
    =============================================================== */
 
@@ -874,45 +1159,12 @@ document.addEventListener("click", (ev) => {
     dispatch({ type: "setConfirmed", params: { personId, confirmed: !p.confirmed } });
     return;
   }
-  if (action === "toggle-pin") {
-    const p = personById(state, personId);
-    if (!p) return;
-    dispatch({ type: "setPinned", params: { personId, pinned: !p.pinned } });
-    return;
-  }
+  if (action === "edit-person") { openPersonEditor(personId); return; }
   if (action === "edit-room") { openRoomEditor(roomId); return; }
   if (action === "assign") { openAssignPicker(personId); return; }
   if (action === "unassign") { dispatch({ type: "unassign", params: { personId } }); return; }
   if (action === "fill-slot") { openSlotPicker(roomId, slotId); return; }
-  if (action === "delete-person") {
-    const dp = personById(state, personId);
-    if (!dp) return;
-    confirmDialog(
-      `Remove ${dp.name}?`,
-      `${dp.name} will be taken off the trip list and out of any bed${syncMode === "shared" ? ", for everyone" : ""}. This cannot be undone.`,
-      "Remove",
-      () => dispatch({ type: "deletePerson", params: { personId } })
-    );
-  }
-});
-
-/*
- * Notes are debounced: typing sends one operation when you pause, not one per
- * keystroke. The local value is applied immediately so the field never lags.
- */
-const noteTimers = new Map();
-document.addEventListener("input", (ev) => {
-  const node = ev.target;
-  if (node.getAttribute?.("data-action") !== "note") return;
-  const personId = node.getAttribute("data-person");
-  const p = personById(state, personId);
-  if (p) p.note = node.value;
-
-  clearTimeout(noteTimers.get(personId));
-  noteTimers.set(personId, setTimeout(() => {
-    noteTimers.delete(personId);
-    dispatch({ type: "setNote", params: { personId, note: node.value } }, { optimistic: false });
-  }, NOTE_DEBOUNCE_MS));
+  if (action === "delete-person") confirmDelete(personId);
 });
 
 document.addEventListener("change", (ev) => {
@@ -920,10 +1172,6 @@ document.addEventListener("change", (ev) => {
   const action = node.getAttribute?.("data-action");
   if (action === "mode") {
     dispatch({ type: "setRoomMode", params: { roomId: node.getAttribute("data-room"), mode: node.value } });
-    return;
-  }
-  if (action === "pair") {
-    dispatch({ type: "setPair", params: { personId: node.getAttribute("data-person"), otherId: node.value || null } });
   }
 });
 
@@ -932,18 +1180,7 @@ el.search.addEventListener("input", () => {
   render();
 });
 
-function addPersonFromInput() {
-  const name = el.newPerson.value.trim();
-  if (!name) { el.newPerson.focus(); return; }
-  el.newPerson.value = "";
-  dispatch({ type: "addPerson", params: { name } }, { optimistic: false });
-  el.newPerson.focus();
-}
-
-document.getElementById("btn-add-person").addEventListener("click", addPersonFromInput);
-el.newPerson.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); addPersonFromInput(); }
-});
+document.getElementById("btn-add-person").addEventListener("click", () => openPersonEditor(null));
 
 document.getElementById("btn-suggest").addEventListener("click", () => {
   confirmDialog(
