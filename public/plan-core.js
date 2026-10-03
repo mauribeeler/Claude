@@ -15,8 +15,11 @@ export const SCHEMA_VERSION = 2;
 
 export const STARTING_PEOPLE = [
   "Amelia", "Charles", "Courtney", "Graham", "Hannah", "Henry", "JJ", "Joel",
-  "Mantas", "Nick", "Tim", "Tom", "Huxley", "Mauricio", "Minnie"
+  "Mantas", "Nick", "Tim", "Tom", "Huxley", "Mauricio", "Minnie", "Toby", "John"
 ];
+
+/* Invited but already said no — they stay on the list, marked Not going. */
+const NOT_GOING_AT_START = ["Toby", "John"];
 
 /* Zermatt, Sunday 31 Jan to Friday 5 Feb 2027 — five nights. */
 export const TRIP_START = "2027-01-31";
@@ -187,6 +190,7 @@ export function initialState() {
     femaleDorm.slots[0].occupants = [hannah.id];
     hannah.pinned = true;
   }
+  state.people.forEach((p) => { if (NOT_GOING_AT_START.includes(p.name)) p.declined = true; });
 
   state.migrations = {};
   Object.keys(MIGRATIONS).forEach((k) => { state.migrations[k] = true; });
@@ -229,22 +233,37 @@ const MIGRATIONS = {
   },
 
   /*
-   * Toby and John came off the trip after plans were already saved. Exact
-   * name match only, so JJ is untouched. Like every migration this runs once:
-   * if someone called Toby or John is added back later, they stay.
+   * Toby and John said no after plans were already saved. They stay on the
+   * list as Not going (bed freed, note kept). Exact name match, so JJ is
+   * untouched.
    */
   removeTobyJohn2027(state) {
-    const leaving = new Set(state.people
-      .filter((p) => ["toby", "john"].includes(p.name.trim().toLowerCase()))
-      .map((p) => p.id));
-    if (!leaving.size) return false;
-    state.rooms.forEach((room) => room.slots.forEach((slot) => {
-      slot.occupants = slot.occupants.filter((id) => !leaving.has(id));
-    }));
-    state.people = state.people.filter((p) => !leaving.has(p.id));
-    state.people.forEach((p) => { if (leaving.has(p.pairWith)) p.pairWith = null; });
-    syncAssignments(state);
-    return true;
+    const leaving = state.people.filter((p) => isNotGoingAtStart(p) && !p.declined);
+    leaving.forEach((p) => markNotGoingIn(state, p));
+    if (leaving.length) syncAssignments(state);
+    return leaving.length > 0;
+  },
+
+  /*
+   * An earlier version deleted Toby and John outright. Put them back as
+   * Not going wherever that happened.
+   */
+  tobyJohnNotGoing2027(state) {
+    let changed = false;
+    for (const name of NOT_GOING_AT_START) {
+      let p = state.people.find((x) => x.name.trim().toLowerCase() === name.toLowerCase());
+      if (!p) {
+        p = makePerson(name);
+        state.people.push(p);
+        changed = true;
+      }
+      if (!p.declined) {
+        markNotGoingIn(state, p);
+        changed = true;
+      }
+    }
+    if (changed) syncAssignments(state);
+    return changed;
   },
 
   /* The Female Dormitory and Hannah's booking were added later. */
@@ -526,6 +545,23 @@ function removeAssignmentIn(state, personId) {
   if (p) p.assignment = null;
 }
 
+const isNotGoingAtStart = (p) =>
+  NOT_GOING_AT_START.some((n) => n.toLowerCase() === p.name.trim().toLowerCase());
+
+/* Not going: no bed, no pin, and nobody left waiting to share with them. */
+function markNotGoingIn(state, p) {
+  p.confirmed = false;
+  p.declined = true;
+  removeAssignmentIn(state, p.id);
+  p.pinned = false;
+  if (p.pairWith) {
+    const partner = personById(state, p.pairWith);
+    if (partner && partner.pairWith === p.id) partner.pairWith = null;
+  }
+  state.people.forEach((x) => { if (x.pairWith === p.id) x.pairWith = null; });
+  p.pairWith = null;
+}
+
 function assignIn(state, personId, roomId, slotId) {
   const person = personById(state, personId);
   if (!person) throw new PlanError("That person is no longer on the trip.", 409);
@@ -775,13 +811,7 @@ const OPS = {
 
     if (p.declined) {
       const hadBed = !!p.assignment;
-      removeAssignmentIn(state, personId);
-      p.pinned = false;
-      if (p.pairWith) {
-        const partner = personById(state, p.pairWith);
-        if (partner && partner.pairWith === p.id) partner.pairWith = null;
-        p.pairWith = null;
-      }
+      markNotGoingIn(state, p);
       return hadBed ? `${p.name} is not going — their bed is free.` : `${p.name} is not going.`;
     }
     return status === "going" ? `${p.name} is going.` : `${p.name} is invited — waiting to hear back.`;
