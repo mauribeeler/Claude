@@ -1,0 +1,5 @@
+node_modules/
+.netlify/
+# Deploy bundle and previews handed to the user, rebuilt from public/
+*.zip
+preview-*.png

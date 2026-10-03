@@ -1,0 +1,26 @@
+# Only ./public is published. Everything else in this repo — CLAUDE.md,
+# notebooklm_research.py, notebooklm_output — stays private and is never
+# uploaded. Do not widen `publish` to the repo root.
+[build]
+  publish = "public"
+  command = ""
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "no-referrer"
+    # The planner talks only to its own /api/plan endpoint: no analytics, no
+    # third-party requests, nothing loaded from another origin.
+    Permissions-Policy = "geolocation=(), camera=(), microphone=(), interest-cohort=()"
+
+# The shared plan must never be cached, or people would act on a stale copy.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store"
