@@ -15,7 +15,7 @@ export const SCHEMA_VERSION = 2;
 
 export const STARTING_PEOPLE = [
   "Amelia", "Charles", "Courtney", "Graham", "Hannah", "Henry", "JJ", "Joel",
-  "John", "Mantas", "Nick", "Tim", "Toby", "Tom", "Huxley", "Mauricio", "Minnie"
+  "Mantas", "Nick", "Tim", "Tom", "Huxley", "Mauricio", "Minnie"
 ];
 
 /* Zermatt, Sunday 31 Jan to Friday 5 Feb 2027 — five nights. */
@@ -208,6 +208,25 @@ const MIGRATIONS = {
   guestMinnie2027(state) {
     if (state.people.some((p) => p.name.trim().toLowerCase() === "minnie")) return false;
     state.people.push(makePerson("Minnie"));
+    return true;
+  },
+
+  /*
+   * Toby and John came off the trip after plans were already saved. Exact
+   * name match only, so JJ is untouched. Like every migration this runs once:
+   * if someone called Toby or John is added back later, they stay.
+   */
+  removeTobyJohn2027(state) {
+    const leaving = new Set(state.people
+      .filter((p) => ["toby", "john"].includes(p.name.trim().toLowerCase()))
+      .map((p) => p.id));
+    if (!leaving.size) return false;
+    state.rooms.forEach((room) => room.slots.forEach((slot) => {
+      slot.occupants = slot.occupants.filter((id) => !leaving.has(id));
+    }));
+    state.people = state.people.filter((p) => !leaving.has(p.id));
+    state.people.forEach((p) => { if (leaving.has(p.pairWith)) p.pairWith = null; });
+    syncAssignments(state);
     return true;
   },
 
