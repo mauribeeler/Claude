@@ -12,7 +12,7 @@ import test from "node:test";
 import {
   initialState, applyOp, getStats, validateState, createSlotsForRoom,
   personById, roomById, normalizePlan, syncAssignments, PlanError, clone,
-  roomCapacity, roomOccupancy, migratePlan
+  roomCapacity, roomOccupancy, migratePlan, statusOf
 } from "../public/plan-core.js";
 
 import { handleRequest } from "../netlify/functions/plan.mjs";
@@ -94,7 +94,7 @@ test("15 people fit the 15 beds exactly, so there is no shortfall", () => {
   assert.equal(stats.beds, 15, "2 + 2 + 4 + 6 + 1");
   assert.equal(stats.total, 15);
   assert.equal(stats.overCapacityBy, 0);
-  assert.equal(validateState(s).filter((i) => /nowhere to sleep/.test(i.text)).length, 0);
+  assert.equal(validateState(s).filter((i) => /more beds? (is|are) needed/.test(i.text)).length, 0);
 });
 
 test("Toby and John are not on the list, and JJ is", () => {
@@ -108,7 +108,7 @@ test("a 16th person is flagged as having nowhere to sleep", () => {
   let s = initialState();
   s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
   assert.equal(getStats(s).overCapacityBy, 1);
-  assert.ok(validateState(s).some((i) => i.level === "error" && /nowhere to sleep/.test(i.text)));
+  assert.ok(validateState(s).some((i) => i.level === "error" && /more beds? (is|are) needed/.test(i.text)));
 });
 
 test("the trip runs 31 Jan to 5 Feb 2027", () => {
@@ -139,7 +139,7 @@ test("adding a room adds beds and clears the shortfall", () => {
   assert.equal(s.rooms.length, 6);
   assert.equal(getStats(s).beds, 17);
   assert.equal(getStats(s).overCapacityBy, 0, "17 people now have somewhere to sleep");
-  assert.equal(validateState(s).filter((i) => /nowhere to sleep/.test(i.text)).length, 0);
+  assert.equal(validateState(s).filter((i) => /more beds? (is|are) needed/.test(i.text)).length, 0);
 });
 
 test("a new room is used by Suggested Allocation", () => {
@@ -326,7 +326,7 @@ test("suggested allocation seats all 15, with nobody left out", () => {
   assert.equal(stats.assigned, 15, "every bed used");
   assert.equal(stats.confirmedUnassigned, 0, "everyone has a bed");
   assert.ok(stats.occupied <= stats.beds);
-  assert.equal(validateState(s).filter((i) => i.level === "error" && !/nowhere to sleep/.test(i.text)).length, 0);
+  assert.equal(validateState(s).filter((i) => i.level === "error" && !/more beds? (is|are) needed/.test(i.text)).length, 0);
   assert.ok(s.rooms.filter((r) => r.type === "double").every((r) => r.mode === "twin"), "no pairs means no couple rooms");
 });
 
@@ -523,6 +523,116 @@ test("export/import round trips without loss", () => {
 
 test("unknown operations are refused", () => {
   assert.throws(() => applyOp(initialState(), { type: "drop database" }), PlanError);
+});
+
+/* ===========================================================================
+   Going / invited / not going
+   =========================================================================== */
+
+test("everyone starts as invited, waiting for a reply", () => {
+  const s = initialState();
+  assert.ok(s.people.every((p) => statusOf(p) === "invited"));
+  const st = getStats(s);
+  assert.equal(st.invited, 15);
+  assert.equal(st.going, 0);
+  assert.equal(st.notGoing, 0);
+});
+
+test("status moves between going, invited and not going", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "setStatus", params: { personId: id, status: "going" } }).state;
+  assert.equal(statusOf(personById(s, id)), "going");
+  s = applyOp(s, { type: "setStatus", params: { personId: id, status: "notGoing" } }).state;
+  assert.equal(statusOf(personById(s, id)), "notGoing");
+  assert.equal(personById(s, id).confirmed, false, "not going is never also confirmed");
+  s = applyOp(s, { type: "setStatus", params: { personId: id, status: "invited" } }).state;
+  assert.equal(statusOf(personById(s, id)), "invited");
+  assert.throws(() => applyOp(s, { type: "setStatus", params: { personId: id, status: "maybe" } }), PlanError);
+});
+
+test("marking someone not going frees their bed, pin and pairing", () => {
+  let s = initialState();
+  s.people.forEach((p) => { p.confirmed = true; });
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  const hannah = s.people.find((p) => p.name === "Hannah");
+  const amelia = s.people.find((p) => p.name === "Amelia");
+  s = applyOp(s, { type: "setPair", params: { personId: hannah.id, otherId: amelia.id } }).state;
+  const before = getStats(s).spacesRemaining;
+
+  const out = applyOp(s, { type: "setStatus", params: { personId: hannah.id, status: "notGoing" } });
+  s = out.state;
+  const h = personById(s, hannah.id);
+  assert.equal(h.assignment, null, "bed freed");
+  assert.equal(h.pinned, false, "booking pin cleared");
+  assert.equal(h.pairWith, null);
+  assert.equal(personById(s, amelia.id).pairWith, null, "partner released too");
+  assert.equal(getStats(s).spacesRemaining, before + 1);
+  assert.match(out.message, /bed is free/);
+});
+
+test("people not going don't count towards beds needed", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
+  assert.equal(getStats(s).overCapacityBy, 1, "16 for 15 beds");
+  s = applyOp(s, { type: "setStatus", params: { personId: s.people.find((p) => p.name === "Huxley").id, status: "notGoing" } }).state;
+  assert.equal(getStats(s).overCapacityBy, 0, "back to 15 needing beds");
+  assert.equal(getStats(s).stillComing, 15);
+  assert.equal(validateState(s).filter((i) => /more beds? (is|are) needed/.test(i.text)).length, 0);
+});
+
+test("someone not going can't be given a bed", () => {
+  let s = initialState();
+  const tom = s.people.find((p) => p.name === "Tom");
+  s = applyOp(s, { type: "setStatus", params: { personId: tom.id, status: "notGoing" } }).state;
+  const slotId = roomById(s, "dorm").slots[0].id;
+  assert.throws(
+    () => applyOp(s, { type: "assign", params: { personId: tom.id, roomId: "dorm", slotId } }),
+    (e) => e instanceof PlanError && /not going/.test(e.message)
+  );
+});
+
+test("Suggested Allocation skips people not going", () => {
+  let s = initialState();
+  const tom = s.people.find((p) => p.name === "Tom");
+  s = applyOp(s, { type: "setStatus", params: { personId: tom.id, status: "notGoing" } }).state;
+  s = applyOp(s, { type: "suggest", params: {} }).state;
+  assert.equal(personById(s, tom.id).assignment, null);
+  assert.equal(getStats(s).assigned, 14);
+  assert.equal(getStats(s).spacesRemaining, 1, "his bed stays available");
+});
+
+test("inviting adds someone as waiting for a reply; can also add straight as going", () => {
+  let s = initialState();
+  s = applyOp(s, { type: "addPerson", params: { name: "Bruno" } }).state;
+  assert.equal(statusOf(s.people.at(-1)), "invited");
+  s = applyOp(s, { type: "addPerson", params: { name: "Rosa", status: "going" } }).state;
+  assert.equal(statusOf(s.people.at(-1)), "going");
+});
+
+test("an old page confirming someone not going brings them back as going", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "setStatus", params: { personId: id, status: "notGoing" } }).state;
+  s = applyOp(s, { type: "setConfirmed", params: { personId: id, confirmed: true } }).state;
+  assert.equal(statusOf(personById(s, id)), "going");
+});
+
+test("not going survives an export/import round trip", () => {
+  let s = initialState();
+  const id = s.people[0].id;
+  s = applyOp(s, { type: "setStatus", params: { personId: id, status: "notGoing" } }).state;
+  const back = normalizePlan(JSON.parse(JSON.stringify(s)));
+  assert.equal(statusOf(personById(back, id)), "notGoing");
+});
+
+test("a plan saved before 'not going' existed reads correctly", () => {
+  const s = initialState();
+  s.people.forEach((p) => { delete p.declined; });
+  s.people[0].confirmed = true;
+  assert.equal(statusOf(s.people[0]), "going");
+  assert.equal(statusOf(s.people[1]), "invited");
+  assert.equal(getStats(s).notGoing, 0);
 });
 
 /* ===========================================================================

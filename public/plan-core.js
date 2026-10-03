@@ -137,8 +137,25 @@ export function roomOccupancy(room) {
 }
 
 export function makePerson(name) {
-  return { id: uid("p"), name, confirmed: false, note: "", pairWith: null, pinned: false, assignment: null };
+  return { id: uid("p"), name, confirmed: false, declined: false, note: "", pairWith: null, pinned: false, assignment: null };
 }
+
+/*
+ * Three states, stored as two flags so plans saved before "Not going"
+ * existed (no `declined` field) read correctly as before:
+ *   going     confirmed && !declined
+ *   invited   !confirmed && !declined   (asked, no answer yet)
+ *   notGoing  declined
+ */
+export const STATUSES = ["going", "invited", "notGoing"];
+
+export function statusOf(person) {
+  if (person.declined) return "notGoing";
+  return person.confirmed ? "going" : "invited";
+}
+
+/* People who still need somewhere to sleep: everyone except those not going. */
+export const needsBed = (person) => !person.declined;
 
 export function roomFromBlueprint(b) {
   return {
@@ -320,29 +337,36 @@ export function assignmentLabel(state, person) {
    -------------------------------------------------------------------------- */
 
 export function getStats(state) {
-  let confirmed = 0, assigned = 0, confirmedUnassigned = 0;
+  let confirmed = 0, assigned = 0, confirmedUnassigned = 0, notGoing = 0;
   state.people.forEach((p) => {
+    if (p.declined) { notGoing += 1; return; }
     if (p.confirmed) confirmed += 1;
     if (p.assignment) assigned += 1;
     else if (p.confirmed) confirmedUnassigned += 1;
   });
 
   const total = state.people.length;
+  const stillComing = total - notGoing;   // going or not answered yet
   const beds = state.rooms.reduce((n, r) => n + roomCapacity(r), 0);
   const occupied = state.rooms.reduce((n, r) => n + roomOccupancy(r), 0);
 
   return {
     total,
+    going: confirmed,
+    invited: stillComing - confirmed,
+    notGoing,
+    stillComing,
     confirmed,
-    notConfirmed: total - confirmed,
+    notConfirmed: stillComing - confirmed,
     assigned,
-    unassigned: total - assigned,
+    unassigned: stillComing - assigned,
     beds,
     occupied,
     spacesRemaining: Math.max(0, beds - occupied),
     confirmedUnassigned,
     occupancyPct: beds > 0 ? Math.round((occupied / beds) * 100) : 0,
-    overCapacityBy: Math.max(0, total - beds)
+    // People who say they're not going don't need a bed.
+    overCapacityBy: Math.max(0, stillComing - beds)
   };
 }
 
@@ -393,7 +417,7 @@ export function validateState(state) {
   if (stats.overCapacityBy > 0) {
     issues.push({
       level: "error",
-      text: `${stats.total} people on the list but only ${stats.beds} beds — ${stats.overCapacityBy} will have nowhere to sleep. Add accommodation or trim the list.`
+      text: `${stats.stillComing} people coming or yet to reply, but only ${stats.beds} beds — ${stats.overCapacityBy} more ${stats.overCapacityBy === 1 ? "bed is" : "beds are"} needed.`
     });
   }
 
@@ -429,7 +453,8 @@ export function normalizePlan(data) {
     return {
       id,
       name: name.slice(0, MAX_NAME),
-      confirmed: raw.confirmed === true,
+      confirmed: raw.confirmed === true && raw.declined !== true,
+      declined: raw.declined === true,
       note: typeof raw.note === "string" ? raw.note.slice(0, MAX_NOTE) : "",
       pairWith: typeof raw.pairWith === "string" ? raw.pairWith : null,
       pinned: raw.pinned === true,
@@ -508,6 +533,7 @@ function assignIn(state, personId, roomId, slotId) {
   if (!room) throw new PlanError("That room no longer exists.", 409);
   const slot = slotById(room, slotId);
   if (!slot) throw new PlanError("That bed no longer exists — the room layout may have changed.", 409);
+  if (person.declined) throw new PlanError(`${person.name} is marked as not going. Change that first to give them a bed.`, 409);
 
   if (slot.occupants.includes(personId)) return `${person.name} is already there.`;
 
@@ -630,9 +656,10 @@ function suggestIn(state) {
 
   // Pinned people keep the bed they were put back into and take no further
   // part — their place is booked, not up for reallocation.
+  // People not going are left out entirely.
   const queue = [
-    ...state.people.filter((p) => p.confirmed && !p.assignment),
-    ...state.people.filter((p) => !p.confirmed && !p.assignment)
+    ...state.people.filter((p) => !p.declined && p.confirmed && !p.assignment),
+    ...state.people.filter((p) => !p.declined && !p.confirmed && !p.assignment)
   ];
 
   const taken = new Set();
@@ -729,7 +756,35 @@ const OPS = {
     const p = personById(state, personId);
     if (!p) throw new PlanError("That person is no longer on the trip.", 409);
     p.confirmed = confirmed === true;
+    if (p.confirmed) p.declined = false;
     return `${p.name} marked ${p.confirmed ? "confirmed" : "not confirmed"}.`;
+  },
+
+  /*
+   * Going / invited (no reply yet) / not going. Marking someone not going
+   * frees their bed and ends any bed-sharing pairing, so the space shows as
+   * available straight away.
+   */
+  setStatus(state, { personId, status }) {
+    const p = personById(state, personId);
+    if (!p) throw new PlanError("That person is no longer on the trip.", 409);
+    if (!STATUSES.includes(status)) throw new PlanError("Unknown status.");
+
+    p.confirmed = status === "going";
+    p.declined = status === "notGoing";
+
+    if (p.declined) {
+      const hadBed = !!p.assignment;
+      removeAssignmentIn(state, personId);
+      p.pinned = false;
+      if (p.pairWith) {
+        const partner = personById(state, p.pairWith);
+        if (partner && partner.pairWith === p.id) partner.pairWith = null;
+        p.pairWith = null;
+      }
+      return hadBed ? `${p.name} is not going — their bed is free.` : `${p.name} is not going.`;
+    }
+    return status === "going" ? `${p.name} is going.` : `${p.name} is invited — waiting to hear back.`;
   },
 
   setNote(state, { personId, note }) {
@@ -739,12 +794,14 @@ const OPS = {
     return "";
   },
 
-  addPerson(state, { name }) {
+  addPerson(state, { name, status }) {
     const clean = String(name ?? "").trim().slice(0, MAX_NAME);
     if (!clean) throw new PlanError("A name is required.");
     if (state.people.length >= MAX_PEOPLE) throw new PlanError(`This plan is capped at ${MAX_PEOPLE} people.`);
-    state.people.push(makePerson(clean));
-    return `${clean} added to the trip.`;
+    const person = makePerson(clean);
+    if (status === "going") person.confirmed = true;
+    state.people.push(person);
+    return status === "going" ? `${clean} added as going.` : `${clean} invited.`;
   },
 
   deletePerson(state, { personId }) {

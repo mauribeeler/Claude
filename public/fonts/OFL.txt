@@ -1,0 +1,5 @@
+Fonts bundled with this site, both under the SIL Open Font License 1.1
+(https://openfontlicense.org/open-font-license-official-text/):
+
+Instrument Serif — Copyright 2022 The Instrument Serif Project Authors (https://github.com/Instrument/instrument-serif)
+Hanken Grotesk — Copyright 2021 The Hanken Grotesk Project Authors (https://github.com/marcologous/hanken-grotesk)

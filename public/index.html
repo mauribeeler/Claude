@@ -3,637 +3,546 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ski Trip 2027 — Who Sleeps Where</title>
+<meta name="theme-color" content="#12202e">
+<title>Ski Trip 2027 — Zermatt</title>
+<link rel="preload" href="./fonts/hanken-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* Fonts bundled with the site (SIL Open Font License — fonts/OFL.txt), so the
+   page makes no request to any third party. */
+@font-face{font-family:"Hanken Grotesk";src:url("./fonts/hanken-grotesk.woff2") format("woff2");font-weight:400 800;font-display:swap}
+@font-face{font-family:"Instrument Serif";src:url("./fonts/instrument-serif.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Instrument Serif";src:url("./fonts/instrument-serif-italic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
+
 /* ---------------------------------------------------------------
-   1. Design tokens
+   Tokens. Alpine evening: deep navy, glacier white, hairlines, one
+   warm alpenglow accent kept for small details.
 --------------------------------------------------------------- */
 :root{
-  --bg:#f6f7f8;
-  --surface:#ffffff;
-  --surface-2:#f2f4f5;
-  --line:#dfe3e6;
-  --line-strong:#c6ccd1;
-  --text:#1b2227;
-  --text-dim:#5c686f;
-  --text-faint:#7d888f;
+  --bg:#f3f5f7;
+  --paper:#ffffff;
+  --paper-2:#f7f8fa;
+  --line:#e2e6eb;
+  --line-2:#cdd4dc;
+  --ink:#12202e;
+  --ink-2:#384756;
+  --muted:#63707d;
+  --faint:#909ba7;
 
-  --ok:#15803d;
-  --ok-bg:#e8f4ec;
-  --ok-line:#b8ddc6;
+  --accent:#12202e;          /* primary actions are ink, like a printed poster */
+  --on-accent:#ffffff;
+  --glow:#d9845f;            /* alpenglow, used sparingly */
+  --focus:#3b7bd8;
 
-  --pend:#a15c07;
-  --pend-bg:#fdf3e3;
-  --pend-line:#ecd4a8;
+  --going:#2b7a58;   --going-bg:#eaf4ef;   --going-line:#c3e0d1;
+  --await:#9c6618;   --await-bg:#fbf3e3;   --await-line:#ecd7ae;
+  --nogo:#6f7b88;    --nogo-bg:#eef1f4;    --nogo-line:#d9dee4;
+  --err:#b23c33;     --err-bg:#fbeceb;     --err-line:#efc6c2;
 
-  --err:#b3261e;
-  --err-bg:#fceceb;
-  --err-line:#efbfbc;
-
-  --accent:#1f4d5c;
-  --accent-soft:#e6eef1;
-
-  --r-s:8px;
-  --r-m:12px;
-  --r-l:16px;
-  --shadow:0 1px 2px rgba(16,24,32,.06), 0 2px 8px rgba(16,24,32,.05);
-  --shadow-lift:0 4px 16px rgba(16,24,32,.12);
-  --focus:#0b6ea8;
+  --r:12px; --r-lg:18px;
+  --shadow:0 1px 2px rgba(18,32,46,.04),0 6px 24px rgba(18,32,46,.06);
+  --shadow-lift:0 18px 50px rgba(18,32,46,.22);
+  --sans:"Hanken Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --serif:"Instrument Serif","Iowan Old Style","Palatino Linotype",Georgia,serif;
 }
-
 @media (prefers-color-scheme: dark){
-  :root{
-    --bg:#12161a;
-    --surface:#1a2026;
-    --surface-2:#212930;
-    --line:#2d363e;
-    --line-strong:#3d4750;
-    --text:#e8edf1;
-    --text-dim:#a5b1ba;
-    --text-faint:#8b979f;
-
-    --ok:#6cc48c;
-    --ok-bg:#17281e;
-    --ok-line:#2e5540;
-
-    --pend:#e0ab5f;
-    --pend-bg:#2a2213;
-    --pend-line:#584426;
-
-    --err:#f08d84;
-    --err-bg:#2c1917;
-    --err-line:#5c302c;
-
-    --accent:#8fc4d6;
-    --accent-soft:#1d2a30;
-
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
-    --shadow-lift:0 4px 18px rgba(0,0,0,.5);
-    --focus:#6fb6e0;
+  :root:not([data-theme="light"]){
+    --bg:#0c141c; --paper:#131d27; --paper-2:#18242f; --line:#24313e; --line-2:#334252;
+    --ink:#eef2f6; --ink-2:#c7d0da; --muted:#9aa7b4; --faint:#748391;
+    --accent:#e8edf2; --on-accent:#0c141c; --focus:#8bb8f0;
+    --going:#68c49a; --going-bg:#13281f; --going-line:#27503d;
+    --await:#e2b260; --await-bg:#2a2213; --await-line:#55431f;
+    --nogo:#8e9aa7; --nogo-bg:#1b2530; --nogo-line:#2d3a47;
+    --err:#ef8d84; --err-bg:#2c1716; --err-line:#5a2d29;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 24px rgba(0,0,0,.3);
+    --shadow-lift:0 18px 50px rgba(0,0,0,.6);
   }
 }
 :root[data-theme="dark"]{
-  --bg:#12161a; --surface:#1a2026; --surface-2:#212930; --line:#2d363e; --line-strong:#3d4750;
-  --text:#e8edf1; --text-dim:#a5b1ba; --text-faint:#8b979f;
-  --ok:#6cc48c; --ok-bg:#17281e; --ok-line:#2e5540;
-  --pend:#e0ab5f; --pend-bg:#2a2213; --pend-line:#584426;
-  --err:#f08d84; --err-bg:#2c1917; --err-line:#5c302c;
-  --accent:#8fc4d6; --accent-soft:#1d2a30;
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
-  --shadow-lift:0 4px 18px rgba(0,0,0,.5); --focus:#6fb6e0;
-}
-:root[data-theme="light"]{
-  --bg:#f6f7f8; --surface:#ffffff; --surface-2:#f2f4f5; --line:#dfe3e6; --line-strong:#c6ccd1;
-  --text:#1b2227; --text-dim:#5c686f; --text-faint:#7d888f;
-  --ok:#15803d; --ok-bg:#e8f4ec; --ok-line:#b8ddc6;
-  --pend:#a15c07; --pend-bg:#fdf3e3; --pend-line:#ecd4a8;
-  --err:#b3261e; --err-bg:#fceceb; --err-line:#efbfbc;
-  --accent:#1f4d5c; --accent-soft:#e6eef1;
-  --shadow:0 1px 2px rgba(16,24,32,.06), 0 2px 8px rgba(16,24,32,.05);
-  --shadow-lift:0 4px 16px rgba(16,24,32,.12); --focus:#0b6ea8;
+  --bg:#0c141c; --paper:#131d27; --paper-2:#18242f; --line:#24313e; --line-2:#334252;
+  --ink:#eef2f6; --ink-2:#c7d0da; --muted:#9aa7b4; --faint:#748391;
+  --accent:#e8edf2; --on-accent:#0c141c; --focus:#8bb8f0;
+  --going:#68c49a; --going-bg:#13281f; --going-line:#27503d;
+  --await:#e2b260; --await-bg:#2a2213; --await-line:#55431f;
+  --nogo:#8e9aa7; --nogo-bg:#1b2530; --nogo-line:#2d3a47;
+  --err:#ef8d84; --err-bg:#2c1716; --err-line:#5a2d29;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 24px rgba(0,0,0,.3);
+  --shadow-lift:0 18px 50px rgba(0,0,0,.6);
 }
 
 /* ---------------------------------------------------------------
-   2. Base
+   Base
 --------------------------------------------------------------- */
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font:400 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
-  -webkit-font-smoothing:antialiased;
-  padding-bottom:env(safe-area-inset-bottom);
-}
-h1,h2,h3{margin:0;line-height:1.25;letter-spacing:-.01em}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.55 var(--sans);-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
 p{margin:0}
-button{font:inherit;color:inherit}
-input,select,textarea{font:inherit;color:inherit}
-
-:where(a,button,input,select,textarea,[tabindex]):focus-visible{
-  outline:2px solid var(--focus);
-  outline-offset:2px;
-  border-radius:6px;
-}
-
-.wrap{max-width:1180px;margin:0 auto;padding:16px 14px 64px}
-@media (min-width:760px){ .wrap{padding:24px 24px 80px} }
-
-.sr-only{
-  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
-  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;
-}
+button,input,select,textarea{font:inherit;color:inherit}
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:6px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wrap{max-width:1180px;margin:0 auto;padding:0 14px 72px}
+@media (min-width:760px){ .wrap{padding:0 28px 96px} }
 
 /* ---------------------------------------------------------------
-   3. Header
+   Hero — a Swiss travel poster
 --------------------------------------------------------------- */
-.masthead{margin-bottom:16px}
-.eyebrow{
-  font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--text-faint);margin-bottom:6px;
+.hero{
+  position:relative;isolation:isolate;overflow:hidden;
+  margin:14px 0 0;border-radius:var(--r-lg);
+  min-height:400px;padding:28px 24px 96px;color:#fff;
+  background:#16263a;
 }
-.masthead h1{font-size:clamp(23px,6vw,34px);font-weight:650}
-.masthead .sub{color:var(--text-dim);font-size:14px;margin-top:6px}
+@media (min-width:760px){ .hero{margin-top:24px;min-height:470px;padding:48px 52px 110px} }
+.hero-art{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
+/* Phones: keep the mountain below the title so the text sits on clear sky. */
+@media (max-width:759px){
+  .hero{background:#0f1b2a;min-height:450px}
+  .hero-art{top:auto;height:56%}
+}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:#f0c3a8}
+.hero h1{font-family:var(--serif);font-size:clamp(46px,12vw,92px);line-height:.95;letter-spacing:-.01em;margin-top:14px}
+.hero .lede{font-family:var(--serif);font-style:italic;font-size:clamp(20px,5vw,30px);color:#dfe7ef;margin-top:6px}
+.hero-dates{display:flex;align-items:center;gap:8px;margin-top:18px;font-size:14px;font-weight:600;letter-spacing:.02em;color:#eef3f8}
+.hero-dates[hidden]{display:none}
+.hero-dates .i{color:#f0c3a8}
 
 /* ---------------------------------------------------------------
-   4. Cards / panels
+   Summary card, overlapping the bottom of the poster
 --------------------------------------------------------------- */
-.card{
-  background:var(--surface);
-  border:1px solid var(--line);
-  border-radius:var(--r-l);
-  box-shadow:var(--shadow);
+.summary{
+  position:relative;z-index:2;margin:-56px 10px 0;
+  background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
 }
-.card + .card{margin-top:16px}
-.card-head{
-  display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;
-  padding:14px 16px;border-bottom:1px solid var(--line);
+@media (min-width:760px){ .summary{margin:-64px 32px 0;grid-template-columns:repeat(4,minmax(0,1fr))} }
+.fig{padding:18px 20px 16px;min-width:0}
+.fig + .fig{border-left:1px solid var(--line)}
+@media (max-width:759px){
+  .fig:nth-child(3){border-left:0}
+  .fig:nth-child(n+3){border-top:1px solid var(--line)}
 }
-.card-head h2{font-size:16px;font-weight:640}
-.card-body{padding:14px 16px}
+.fig .num{font-family:var(--serif);font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.fig .num small{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--faint);margin-left:4px}
+.fig .lab{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fig .lab::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--line-2);flex:none}
+.fig.going .lab::before{background:var(--going)}
+.fig.await .lab::before{background:var(--await)}
+.fig.nogo .lab::before{background:var(--nogo)}
+.fig.beds .lab::before{background:var(--glow)}
+.bar{margin-top:10px;height:4px;border-radius:99px;background:var(--paper-2);overflow:hidden;border:1px solid var(--line)}
+.bar > span{display:block;height:100%;background:var(--ink);border-radius:99px;transition:width .35s ease}
+
+/* sync status: one quiet line */
+.syncbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:16px 4px 0;font-size:13px;color:var(--muted)}
+.sync-dot{display:inline-flex;align-items:center;gap:7px;font-weight:650;color:var(--muted)}
+.sync-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.sync-dot.live{color:var(--going)} .sync-dot.live::before{background:var(--going)}
+.sync-dot.saving{color:var(--await)} .sync-dot.saving::before{background:var(--await);animation:pulse 1s ease-in-out infinite}
+.sync-dot.offline{color:var(--err)} .sync-dot.offline::before{background:var(--err)}
+.sync-dot.local::before{background:var(--glow)}
+.syncbar .who{flex:1 1 auto;min-width:0}
+.syncbar .who strong{color:var(--ink);font-weight:650}
+.linkbtn{appearance:none;background:none;border:0;padding:4px 2px;font-size:13px;font-weight:650;color:var(--ink-2);cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:3px}
+.linkbtn:hover{text-decoration-color:currentColor}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 /* ---------------------------------------------------------------
-   5. Dashboard
+   Sections
 --------------------------------------------------------------- */
-.stats{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px;
-}
-@media (min-width:520px){ .stats{grid-template-columns:repeat(4,minmax(0,1fr))} }
-
-.stat{
-  background:var(--surface-2);
-  border:1px solid var(--line);
-  border-radius:var(--r-m);
-  padding:10px 11px;
-  min-width:0;
-}
-.stat .k{
-  font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
-  color:var(--text-faint);display:block;margin-bottom:3px;
-  overflow-wrap:anywhere;
-}
-.stat .v{font-size:22px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.stat.is-ok{background:var(--ok-bg);border-color:var(--ok-line)}
-.stat.is-ok .v{color:var(--ok)}
-.stat.is-pend{background:var(--pend-bg);border-color:var(--pend-line)}
-.stat.is-pend .v{color:var(--pend)}
-.stat.is-err{background:var(--err-bg);border-color:var(--err-line)}
-.stat.is-err .v{color:var(--err)}
-
-.meter{
-  margin-top:12px;height:8px;border-radius:99px;background:var(--surface-2);
-  border:1px solid var(--line);overflow:hidden;
-}
-.meter > span{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .2s ease}
+.section{margin-top:40px}
+@media (min-width:760px){ .section{margin-top:56px} }
+.section-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px;margin:0 4px 16px}
+.section-head h2{font-family:var(--serif);font-size:clamp(30px,6vw,40px);line-height:1}
+.section-head .sub{font-size:14px;color:var(--muted);margin-top:6px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow)}
 
 /* ---------------------------------------------------------------
-   6. Buttons + controls
+   Controls
 --------------------------------------------------------------- */
 .btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  padding:9px 13px;min-height:40px;
-  background:var(--surface);
-  border:1px solid var(--line-strong);
-  border-radius:10px;
-  font-size:14px;font-weight:550;
-  cursor:pointer;
-  transition:background .12s ease,border-color .12s ease,transform .06s ease;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:42px;padding:9px 16px;border-radius:10px;
+  border:1px solid var(--line-2);background:var(--paper);
+  font-size:14px;font-weight:650;letter-spacing:.005em;cursor:pointer;white-space:nowrap;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
-.btn:hover{background:var(--surface-2)}
-.btn:active{transform:translateY(1px)}
-.btn[disabled]{opacity:.45;cursor:not-allowed}
-/* On-accent text flips because --accent itself flips light/dark. */
-.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
-@media (prefers-color-scheme: dark){ .btn-primary{color:#0f1417} }
-:root[data-theme="dark"] .btn-primary{color:#0f1417}
-:root[data-theme="light"] .btn-primary{color:#fff}
-.btn-primary:hover{filter:brightness(1.08);background:var(--accent)}
-.btn-sm{padding:5px 10px;min-height:32px;font-size:13px;border-radius:8px}
-.btn-danger{color:var(--err);border-color:var(--err-line)}
-.btn-danger:hover{background:var(--err-bg)}
-.btn-ghost{border-color:transparent;background:transparent}
-.btn-ghost:hover{background:var(--surface-2)}
-
-.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
-.toolbar .spacer{flex:1 1 auto}
-
-.field{display:flex;flex-direction:column;gap:4px}
-.field label{font-size:12px;font-weight:600;color:var(--text-dim)}
-.input,select.input,textarea.input{
-  width:100%;padding:9px 11px;min-height:40px;
-  background:var(--surface);
-  border:1px solid var(--line-strong);
-  border-radius:10px;
-}
-textarea.input{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.45}
-.input::placeholder{color:var(--text-faint)}
+.btn:hover{border-color:var(--ink-2)}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-primary:hover{opacity:.9;border-color:var(--accent)}
+.btn-sm{min-height:34px;padding:6px 12px;font-size:13px;border-radius:9px;gap:6px}
+.btn-sm .i{width:14px;height:14px}
+.btn-quiet{border-color:transparent;background:transparent;color:var(--ink-2)}
+.btn-quiet:hover{background:var(--paper-2);border-color:var(--line)}
+.btn-danger{color:var(--err);border-color:var(--err-line);background:var(--paper)}
+.btn-danger:hover{background:var(--err-bg);border-color:var(--err)}
+.btn-pinned{background:var(--going-bg);border-color:var(--going-line);color:var(--going)}
+.input,select.input{width:100%;min-height:44px;padding:10px 14px;border:1px solid var(--line-2);border-radius:10px;background:var(--paper)}
+.input:focus{outline:none;border-color:var(--ink-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 20%,transparent)}
+.input::placeholder{color:var(--faint)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;font-weight:650;letter-spacing:.04em;color:var(--muted)}
+@media (max-width:640px){ .input,select.input,.note-input{font-size:16px} }
 
 /* ---------------------------------------------------------------
-   7. Warnings
+   The group — everyone, by name, at a glance
 --------------------------------------------------------------- */
-.alerts{display:grid;gap:8px;margin:0 0 16px}
-.alerts:empty{margin:0}
-.alert{
-  display:flex;gap:10px;align-items:flex-start;
-  padding:11px 13px;border-radius:var(--r-m);font-size:14px;
-  border:1px solid;
+.invite{display:flex;gap:8px;width:100%;max-width:420px}
+.invite .input{flex:1 1 auto}
+.board{display:grid;gap:0}
+@media (min-width:760px){ .board{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.col{padding:20px 22px 22px;min-width:0}
+.col + .col{border-top:1px solid var(--line)}
+@media (min-width:760px){ .col + .col{border-top:0;border-left:1px solid var(--line)} }
+.col-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.col-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.col-title::before{content:"";width:8px;height:8px;border-radius:50%}
+.col.going .col-title::before{background:var(--going)}
+.col.await .col-title::before{background:var(--await)}
+.col.nogo .col-title::before{background:var(--nogo)}
+.col-count{font-family:var(--serif);font-size:30px;line-height:1}
+.names{display:flex;flex-wrap:wrap;gap:8px}
+.name{
+  display:inline-flex;align-items:center;gap:8px;max-width:100%;
+  padding:5px 12px 5px 5px;border-radius:99px;border:1px solid var(--line);background:var(--paper-2);
+  font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s ease,background .15s ease;
 }
-.alert .ico{flex:none;font-weight:700}
+.name:hover{border-color:var(--ink-2)}
+.name .ini{
+  width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;
+  font-size:10.5px;font-weight:750;letter-spacing:.02em;background:var(--paper);border:1px solid var(--line);color:var(--ink-2);
+}
+.col.going .name .ini{background:var(--going-bg);border-color:var(--going-line);color:var(--going)}
+.col.await .name .ini{background:var(--await-bg);border-color:var(--await-line);color:var(--await)}
+.col.nogo .name{color:var(--muted)}
+.name .flag{width:7px;height:7px;border-radius:50%;background:var(--await);flex:none}
+.col-empty{font-size:14px;color:var(--faint)}
+.board-note{padding:0 22px 18px;font-size:12.5px;color:var(--faint);display:flex;align-items:center;gap:7px}
+.board-note .flag{width:7px;height:7px;border-radius:50%;background:var(--await);flex:none}
+
+/* ---------------------------------------------------------------
+   Alerts
+--------------------------------------------------------------- */
+.alerts{display:grid;gap:8px;margin-top:16px}
+.alerts:empty{display:none}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:var(--r);font-size:14px;border:1px solid}
+.alert .ico{flex:none;font-weight:800}
 .alert-err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
-.alert-warn{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
-.alert-ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.alert strong{font-weight:650}
+.alert-warn{background:var(--await-bg);border-color:var(--await-line);color:var(--await)}
+.alert-ok{display:none}
 
 /* ---------------------------------------------------------------
-   8. Layout
+   Rooms + people layout
 --------------------------------------------------------------- */
-.columns{display:grid;gap:16px;margin-top:16px}
-@media (min-width:980px){
-  .columns{grid-template-columns:minmax(0,7fr) minmax(0,8fr);align-items:start}
-}
+.columns{display:grid;gap:40px}
+@media (min-width:1040px){ .columns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start} }
 
-/* ---------------------------------------------------------------
-   9. People panel
---------------------------------------------------------------- */
-.people-controls{display:grid;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+/* People & notes */
+.people-tools{display:grid;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
 .tabs{display:flex;flex-wrap:wrap;gap:6px}
-.tab{
-  padding:6px 11px;min-height:34px;
-  border:1px solid var(--line);border-radius:99px;
-  background:var(--surface-2);
-  font-size:13px;font-weight:550;color:var(--text-dim);
-  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
-}
-.tab:hover{border-color:var(--line-strong)}
-.tab[aria-selected="true"]{
-  background:var(--accent);border-color:var(--accent);color:#fff;
-}
-@media (prefers-color-scheme: dark){ .tab[aria-selected="true"]{color:#0f1417} }
-:root[data-theme="dark"] .tab[aria-selected="true"]{color:#0f1417}
-:root[data-theme="light"] .tab[aria-selected="true"]{color:#fff}
-.tab .n{font-variant-numeric:tabular-nums;opacity:.8;font-size:12px}
-
-.add-person{display:flex;gap:8px}
-.add-person .input{flex:1 1 auto}
-
+.tab{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:var(--paper);font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+.tab:hover{color:var(--ink);border-color:var(--line-2)}
+.tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.tab .n{font-variant-numeric:tabular-nums;opacity:.7}
 .people-list{list-style:none;margin:0;padding:0}
-.person{
-  padding:12px 16px;
-  border-bottom:1px solid var(--line);
-  display:grid;gap:8px;
-}
+.person{display:grid;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
 .person:last-child{border-bottom:0}
-.person.flag{background:var(--pend-bg)}
-.person-top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
-.person-id{flex:1 1 150px;min-width:0}
-.person-name{font-size:15.5px;font-weight:620;overflow-wrap:anywhere}
-.person-where{font-size:13px;color:var(--text-dim);margin-top:2px;overflow-wrap:anywhere}
-.person-where.none{color:var(--pend)}
-
-.pill{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:3px 9px;border-radius:99px;
-  font-size:12px;font-weight:600;border:1px solid;
-  white-space:nowrap;
+.person.is-nogo{background:var(--paper-2)}
+.person.is-nogo .person-name{color:var(--muted)}
+.person-top{display:flex;align-items:center;gap:12px}
+.ini-lg{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:13px;font-weight:750;background:var(--paper-2);border:1px solid var(--line);color:var(--ink-2)}
+.person-id{flex:1 1 auto;min-width:0}
+.person-name{font-size:16.5px;font-weight:700;letter-spacing:-.005em;overflow-wrap:anywhere}
+.person-where{font-size:13.5px;color:var(--muted);margin-top:1px;overflow-wrap:anywhere}
+.person-where .i{width:14px;height:14px;vertical-align:-2px;margin-right:3px;color:var(--faint)}
+.person-where.none{color:var(--await)} .person-where.none .i{color:var(--await)}
+.person-where .pill{margin-left:6px}
+.status{
+  flex:none;display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:5px 12px;border-radius:99px;
+  font-size:12.5px;font-weight:700;border:1px solid;cursor:pointer;white-space:nowrap;
 }
-.pill-ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.pill-pend{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.status.going{background:var(--going-bg);border-color:var(--going-line);color:var(--going)}
+.status.await{background:var(--await-bg);border-color:var(--await-line);color:var(--await)}
+.status.nogo{background:var(--nogo-bg);border-color:var(--nogo-line);color:var(--nogo)}
+.pill{display:inline-flex;align-items:center;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid;vertical-align:1px}
+.pill-ok{background:var(--going-bg);border-color:var(--going-line);color:var(--going)}
+.pill-neutral{background:var(--paper-2);border-color:var(--line);color:var(--muted)}
 .pill-err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
-.pill-neutral{background:var(--surface-2);border-color:var(--line);color:var(--text-dim)}
-
-.toggle{
-  display:inline-flex;align-items:center;gap:7px;
-  padding:5px 11px;min-height:34px;
-  border:1px solid var(--line-strong);border-radius:99px;
-  background:var(--surface);cursor:pointer;font-size:13px;font-weight:600;
-  white-space:nowrap;
-}
-.toggle .dot{
-  width:9px;height:9px;border-radius:50%;
-  background:var(--pend);flex:none;
-}
-.toggle[aria-pressed="true"]{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.toggle[aria-pressed="true"] .dot{background:var(--ok)}
-
-.person-actions{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
-.person-actions .pair-row{margin-left:auto}
-.btn-pinned{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.btn-pinned:hover{background:var(--ok-bg);filter:brightness(.97)}
-.person-where .pill{margin-left:6px;vertical-align:baseline}
-.person-note{width:100%}
+.person-note{display:block}
 .note-input{
-  display:block;width:100%;padding:7px 10px;min-height:36px;font-size:13.5px;line-height:1.45;
-  background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
-  resize:none;overflow:hidden;
+  display:block;width:100%;min-height:42px;padding:10px 14px;resize:none;overflow:hidden;
+  font-size:14px;line-height:1.5;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);
+  transition:border-color .15s ease,background .15s ease;
 }
-.note-status{display:block;margin-top:3px;font-size:12px;color:var(--text-faint)}
+.note-input:hover{border-color:var(--line-2)}
+.note-input:focus{outline:none;background:var(--paper);border-color:var(--ink-2)}
+.note-input::placeholder{color:var(--faint)}
+.note-status{display:block;margin-top:4px;font-size:12px;font-weight:600;color:var(--faint)}
 .note-status:empty{display:none}
-.note-status.saved{color:var(--ok)}
-.note-status.err{color:var(--err)}
-/* 16px stops iOS Safari zooming the page when a box is tapped. */
-@media (max-width:640px){ .note-input,.input{font-size:16px} }
-.pair-row{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-faint)}
-.pair-row select{
-  padding:5px 8px;min-height:32px;font-size:13px;color:var(--text-dim);
-  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
-  max-width:150px;
-}
-.empty{padding:26px 16px;text-align:center;color:var(--text-faint);font-size:14px}
+.note-status.saved{color:var(--going)} .note-status.err{color:var(--err)}
+.person-actions{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+.act{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.act-side{margin-left:auto}
+.pair-row{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--faint)}
+.pair-row select{min-height:34px;max-width:130px;padding:5px 8px;font-size:13px;font-weight:600;color:var(--ink-2);background:var(--paper);border:1px solid var(--line);border-radius:9px}
+.empty{padding:28px 20px;text-align:center;color:var(--faint);font-size:14px}
 
-/* ---------------------------------------------------------------
-   10. Room cards
---------------------------------------------------------------- */
-.rooms-head{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  margin:0 2px 12px;
-}
-.rooms-head h2{font-size:16px;font-weight:640}
-.rooms{display:grid;gap:16px}
-.room{
-  background:var(--surface);border:1px solid var(--line);
-  border-radius:var(--r-l);box-shadow:var(--shadow);overflow:hidden;
-}
-.room.invalid{border-color:var(--err-line);box-shadow:0 0 0 1px var(--err-line)}
-.room-head{padding:13px 15px;border-bottom:1px solid var(--line);display:grid;gap:9px}
-.room-title-row{display:flex;gap:10px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
-.room-title{font-size:16px;font-weight:640}
-.room-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.room-mode{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.room-mode label{font-size:12px;font-weight:600;color:var(--text-dim)}
-.room-mode select{
-  padding:6px 9px;min-height:36px;font-size:13.5px;
-  background:var(--surface-2);border:1px solid var(--line-strong);border-radius:9px;
-}
-.room-warn{
-  margin:0 15px 12px;padding:9px 11px;border-radius:10px;font-size:13px;
-  background:var(--err-bg);border:1px solid var(--err-line);color:var(--err);
-}
-
-.slots{list-style:none;margin:0;padding:12px 15px 15px;display:grid;gap:9px}
-.slot{
-  border:1px solid var(--line);border-radius:var(--r-m);
-  background:var(--surface-2);padding:10px 11px;
-  display:grid;gap:8px;
-}
-.slot.filled{background:var(--surface);border-color:var(--line-strong)}
-.slot.over{border-color:var(--err-line);background:var(--err-bg)}
-.slot-top{display:flex;gap:8px;align-items:center;justify-content:space-between}
-.slot-label{font-size:12.5px;font-weight:650;color:var(--text-dim);letter-spacing:.02em}
-.slot-label .kind{font-weight:500;color:var(--text-faint)}
-.occupants{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.chip{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:4px 5px 4px 11px;border-radius:99px;
-  background:var(--accent-soft);border:1px solid var(--line);
-  font-size:13.5px;font-weight:560;max-width:100%;
-}
-.chip.unconf{background:var(--pend-bg);border-color:var(--pend-line)}
-.chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip .x{
-  width:22px;height:22px;flex:none;display:inline-flex;align-items:center;justify-content:center;
-  border:0;background:transparent;border-radius:50%;cursor:pointer;
-  color:var(--text-dim);font-size:15px;line-height:1;
-}
+/* Rooms */
+.rooms{display:grid;gap:14px}
+.room{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden}
+.room.invalid{border-color:var(--err-line)}
+.room-head{display:grid;gap:12px;padding:18px 20px 12px}
+.room-title-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.room-title{font-family:var(--serif);font-size:26px;line-height:1.05}
+.room-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.room-meta .cap{font-variant-numeric:tabular-nums;font-weight:650;color:var(--ink-2)}
+.room-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.room-mode{display:flex;gap:8px;align-items:center}
+.room-mode label{font-size:12px;font-weight:650;color:var(--muted)}
+.room-mode select{min-height:34px;padding:5px 10px;font-size:13px;font-weight:600;background:var(--paper);border:1px solid var(--line-2);border-radius:9px}
+.room-warn{margin:0 20px 12px;padding:10px 12px;border-radius:10px;font-size:13px;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err)}
+.slots{list-style:none;margin:0;padding:4px 20px 20px;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.slot{display:grid;gap:8px;align-content:start;min-width:0;padding:11px 11px 11px 13px;border-radius:var(--r);border:1px dashed var(--line-2);background:var(--paper-2)}
+.slot.filled{border-style:solid;border-color:var(--line);background:var(--paper)}
+.slot.over{border-style:solid;border-color:var(--err-line);background:var(--err-bg)}
+.slot-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.slot-label{display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.slot-label .i{width:14px;height:14px;color:var(--faint)}
+.slot-add{width:28px;height:28px;display:grid;place-items:center;flex:none;padding:0;border-radius:8px;border:1px solid var(--line-2);background:var(--paper);color:var(--ink);cursor:pointer}
+.slot-add:hover:not([disabled]){border-color:var(--ink)}
+.slot-add[disabled]{opacity:.3;cursor:not-allowed}
+.slot-add .i{width:14px;height:14px}
+.occupants{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:3px 4px 3px 10px;border-radius:99px;font-size:13.5px;font-weight:650;background:var(--paper-2);border:1px solid var(--line)}
+.chip.unconf{background:var(--await-bg);border-color:var(--await-line)}
+.chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chip .x{width:22px;height:22px;display:grid;place-items:center;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:var(--faint);cursor:pointer}
 .chip .x:hover{background:var(--err-bg);color:var(--err)}
-.slot-empty{font-size:13.5px;color:var(--text-faint);font-style:italic}
+.chip .x .i{width:12px;height:12px}
+.slot-empty{font-size:13px;color:var(--faint)}
 
 /* ---------------------------------------------------------------
-   11. Help
+   Help + footer
 --------------------------------------------------------------- */
-details.help{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);
-  box-shadow:var(--shadow);margin-top:16px;
-}
-details.help > summary{
-  padding:13px 16px;cursor:pointer;font-size:15px;font-weight:620;
-  list-style:none;display:flex;align-items:center;gap:8px;
-}
+details.help{margin-top:40px;border-top:1px solid var(--line)}
+details.help > summary{display:flex;align-items:center;gap:8px;padding:18px 4px;cursor:pointer;list-style:none;font-weight:650}
 details.help > summary::-webkit-details-marker{display:none}
-details.help > summary::after{content:"▾";margin-left:auto;color:var(--text-faint);font-size:12px}
-details.help[open] > summary::after{content:"▴"}
-details.help ol{margin:0;padding:0 16px 16px 34px;display:grid;gap:7px;font-size:14px;color:var(--text-dim)}
-details.help ol strong{color:var(--text)}
+details.help > summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:1.8px solid var(--faint);border-bottom:1.8px solid var(--faint);transform:rotate(45deg) translateY(-2px);transition:transform .2s ease}
+details.help[open] > summary::after{transform:rotate(-135deg) translateY(-2px)}
+details.help ol{margin:0;padding:0 4px 18px 26px;display:grid;gap:8px;font-size:14px;color:var(--muted);max-width:72ch}
+details.help ol strong{color:var(--ink)}
+.foot{margin:28px 4px 0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
 
 /* ---------------------------------------------------------------
-   12. Modal
+   Modal + toast
 --------------------------------------------------------------- */
-.backdrop{
-  position:fixed;inset:0;z-index:60;
-  background:rgba(12,18,22,.5);
-  display:flex;align-items:flex-end;justify-content:center;
-  padding:0;
-}
+.backdrop{position:fixed;inset:0;z-index:60;background:rgba(10,18,26,.55);display:flex;align-items:flex-end;justify-content:center}
 @media (min-width:640px){ .backdrop{align-items:center;padding:24px} }
 .backdrop[hidden]{display:none}
-.modal{
-  background:var(--surface);
-  width:100%;max-width:560px;max-height:88vh;
-  border-radius:var(--r-l) var(--r-l) 0 0;
-  box-shadow:var(--shadow-lift);
-  display:flex;flex-direction:column;overflow:hidden;
-  border:1px solid var(--line);
-}
-@media (min-width:640px){ .modal{border-radius:var(--r-l)} }
-.modal-head{
-  padding:14px 16px;border-bottom:1px solid var(--line);
-  display:flex;gap:12px;align-items:center;justify-content:space-between;
-}
-.modal-head h2{font-size:16.5px;font-weight:640}
-.modal-body{padding:14px 16px;overflow:auto;display:grid;gap:12px}
-.modal-foot{
-  padding:12px 16px;border-top:1px solid var(--line);
-  display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;
-  background:var(--surface);
-}
-.close-x{
-  width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
-  background:var(--surface-2);cursor:pointer;font-size:17px;line-height:1;
-  display:inline-flex;align-items:center;justify-content:center;flex:none;
-}
+.modal{width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:var(--shadow-lift)}
+@media (min-width:640px){ .modal{border-radius:var(--r-lg)} }
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 22px 10px}
+.modal-head h2{font-family:var(--serif);font-size:30px;line-height:1.05}
+.modal-body{display:grid;gap:12px;padding:6px 22px 18px;overflow:auto}
+.modal-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--line)}
+.modal-foot .btn-danger{margin-right:auto}
+.close-x{width:36px;height:36px;display:grid;place-items:center;flex:none;padding:0;border-radius:10px;border:1px solid var(--line);background:var(--paper);cursor:pointer}
+.modal-note{font-size:14px;color:var(--muted)}
 .pick-group{display:grid;gap:6px}
-.pick-group h3{
-  font-size:12px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;
-  color:var(--text-faint);margin-top:4px;
-}
-.pick{
-  width:100%;text-align:left;display:flex;gap:10px;align-items:center;justify-content:space-between;
-  padding:11px 12px;min-height:48px;
-  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-m);
-  cursor:pointer;font-size:14.5px;
-}
-.pick:hover:not([disabled]){border-color:var(--accent);background:var(--accent-soft)}
-.pick[disabled]{opacity:.5;cursor:not-allowed}
-.pick .meta{font-size:12.5px;color:var(--text-dim);white-space:nowrap}
-.pick .lead{display:flex;gap:8px;align-items:center;min-width:0}
-.pick .lead .nm{font-weight:560;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.modal-note{font-size:13px;color:var(--text-dim)}
-.file-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-input[type="file"]{font-size:13px;max-width:100%}
-
-.toast{
-  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
-  z-index:80;padding:10px 16px;border-radius:99px;
-  background:var(--text);color:var(--bg);
-  font-size:13.5px;font-weight:560;box-shadow:var(--shadow-lift);
-  max-width:90vw;text-align:center;
-}
+.pick-group h3{margin-top:6px;font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.pick{width:100%;min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;text-align:left;border-radius:var(--r);border:1px solid var(--line);background:var(--paper-2);cursor:pointer;font-size:15px}
+.pick:hover:not([disabled]){border-color:var(--ink-2);background:var(--paper)}
+.pick[disabled]{opacity:.45;cursor:not-allowed}
+.pick .lead{display:flex;align-items:center;gap:10px;min-width:0}
+.pick .lead .nm{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick .meta{font-size:13px;color:var(--muted);white-space:nowrap}
+.pick.current{border-color:var(--ink);background:var(--paper);box-shadow:inset 0 0 0 1px var(--ink)}
+.pick .opt-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.opt-going .opt-dot{background:var(--going)} .opt-await .opt-dot{background:var(--await)} .opt-nogo .opt-dot{background:var(--nogo)}
+.pick .opt-desc{display:block;font-size:12.5px;font-weight:500;color:var(--muted);white-space:normal}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;max-width:90vw;padding:12px 18px;border-radius:10px;background:var(--ink);color:var(--paper);font-size:14px;font-weight:600;box-shadow:var(--shadow-lift);text-align:center}
 .toast[hidden]{display:none}
 
-/* ---------------------------------------------------------------
-   13. Sync bar
---------------------------------------------------------------- */
-.syncbar{
-  display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;
-  margin:0 0 16px;padding:10px 13px;
-  background:var(--surface);border:1px solid var(--line);
-  border-radius:var(--r-m);box-shadow:var(--shadow);
-  font-size:13px;
-}
-.syncbar .who{color:var(--text-dim);min-width:0;overflow-wrap:anywhere}
-.syncbar .who strong{color:var(--text);font-weight:620}
-.syncbar .grow{flex:1 1 auto}
-.sync-dot{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;
-  border:1px solid var(--line);background:var(--surface-2);color:var(--text-dim);
-  white-space:nowrap;
-}
-.sync-dot::before{
-  content:"";width:8px;height:8px;border-radius:50%;background:var(--text-faint);flex:none;
-}
-.sync-dot.live{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
-.sync-dot.live::before{background:var(--ok)}
-.sync-dot.saving{background:var(--pend-bg);border-color:var(--pend-line);color:var(--pend)}
-.sync-dot.saving::before{background:var(--pend);animation:pulse 1s ease-in-out infinite}
-.sync-dot.offline{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
-.sync-dot.offline::before{background:var(--err)}
-.sync-dot.local{background:var(--accent-soft);border-color:var(--line);color:var(--text-dim)}
-.sync-dot.local::before{background:var(--accent)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-@media (prefers-reduced-motion: reduce){
-  .sync-dot.saving::before{animation:none}
-  *{transition:none !important}
-}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important;animation:none !important} }
 
 /* ---------------------------------------------------------------
-   14. Print
+   Print — the plan on paper
 --------------------------------------------------------------- */
-.print-only{display:none}
 @media print{
-  :root{
-    --bg:#fff;--surface:#fff;--surface-2:#fff;--line:#bbb;--line-strong:#999;
-    --text:#000;--text-dim:#333;--text-faint:#555;
-    --ok:#116633;--pend:#8a5200;--err:#a11;--accent:#123;--accent-soft:#fff;
-    --shadow:none;--shadow-lift:none;
-  }
-  body{background:#fff;color:#000;font-size:11pt}
+  :root{--bg:#fff;--paper:#fff;--paper-2:#fff;--line:#bbb;--line-2:#999;--ink:#000;--ink-2:#222;--muted:#444;--faint:#666;--shadow:none}
+  body{font-size:10.5pt;background:#fff}
   .wrap{max-width:none;padding:0}
-  .toolbar,.people-controls,.person-actions,.pair-row,.room-mode,
-  .chip .x,.backdrop,.toast,details.help,.meter,.close-x,
-  .btn,.tabs,.add-person,.syncbar,.rooms-head,.note-status,.no-print{display:none !important}
-  .card,.room,.stat{border:1px solid #bbb;box-shadow:none;break-inside:avoid}
-  .card-head{border-bottom:1px solid #bbb}
-  .columns{display:block}
-  .card + .card,.rooms > .room{margin-top:10px}
-  .columns > *{margin-top:10px}
-  .rooms{display:block}
-  .print-only{display:block}
+  .hero{min-height:0;padding:0 0 4mm;margin:0;color:#000;background:none;border-radius:0}
+  .hero-art{display:none}
+  .eyebrow{color:#555} .hero .lede,.hero-dates{color:#222}
+  .summary{margin:4mm 0 0;box-shadow:none}
+  .syncbar,.invite,.people-tools,.person-actions,.room-tools,.slot-add,.chip .x,.actions,.backdrop,.toast,details.help,.note-status,.bar,.btn,.no-print{display:none !important}
+  .card,.room{box-shadow:none;break-inside:avoid}
+  .section{margin-top:6mm}
+  .columns{display:block} .columns > * + *{margin-top:6mm}
   .person{break-inside:avoid;padding:6px 10px}
-  .note-input{border:0;background:transparent;padding:0;min-height:0;font-style:italic;color:#333}
-  /* an empty note would otherwise print its placeholder as if it were content */
+  .note-input{border:0;background:none;padding:0;min-height:0;font-style:italic}
   .note-input:placeholder-shown{display:none}
-  .slots{padding:8px 10px}
-  .slot{break-inside:avoid;padding:6px 8px}
-  a[href]::after{content:""}
-  .stats{grid-template-columns:repeat(4,1fr)}
-  .print-title{font-size:16pt;font-weight:700;margin-bottom:2mm}
 }
 </style>
 </head>
 <body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-bed" viewBox="0 0 24 24"><path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3M7 10.5a1.5 1.5 0 1 0 0 .01"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="M7 7h12l-3-3M17 17H5l3 3"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v4M8 3h8l-1 6 3 3v2H6v-2l3-3z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4"/></symbol>
+</svg>
+
 <div class="wrap">
 
-  <header class="masthead">
+  <header class="hero">
+    <!-- Evening light on the Matterhorn, drawn as a travel poster. -->
+    <svg class="hero-art" viewBox="0 0 1440 560" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#0f1b2a"/>
+          <stop offset=".42" stop-color="#22374f"/>
+          <stop offset=".7" stop-color="#5f6f88"/>
+          <stop offset=".86" stop-color="#d9a487"/>
+          <stop offset="1" stop-color="#efc8ae"/>
+        </linearGradient>
+        <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#f6cdb2"/>
+          <stop offset="1" stop-color="#b98a83"/>
+        </linearGradient>
+        <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#5b6c86"/>
+          <stop offset="1" stop-color="#34465f"/>
+        </linearGradient>
+        <linearGradient id="snow" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#dfe6ee"/>
+          <stop offset="1" stop-color="#f3f5f7"/>
+        </linearGradient>
+        <radialGradient id="glow" cx="62%" cy="72%" r="45%">
+          <stop offset="0" stop-color="#f3b896" stop-opacity=".45"/>
+          <stop offset="1" stop-color="#f3b896" stop-opacity="0"/>
+        </radialGradient>
+        <symbol id="pine" viewBox="0 0 40 100"><path d="M20 0 4 34h9L0 60h12L-2 86h18v14h8V86h18L28 60h12L27 34h9z"/></symbol>
+      </defs>
+      <rect width="1440" height="560" fill="url(#sky)"/>
+      <rect width="1440" height="560" fill="url(#glow)"/>
+      <g fill="#fff" opacity=".55">
+        <circle cx="180" cy="70" r="1.2"/><circle cx="330" cy="40" r="1"/><circle cx="520" cy="90" r="1.3"/>
+        <circle cx="1060" cy="60" r="1.1"/><circle cx="1240" cy="110" r="1.4"/><circle cx="1360" cy="48" r="1"/>
+      </g>
+      <path fill="#8396ae" opacity=".55" d="M0 430l120-60 90 30 110-70 100 52 90-28 120 70 380-30 120-60 110 46 90-30 110 50v180H0z"/>
+      <path fill="url(#shade)" d="M884 118l12 6 6 18 16 48 42 60 50 50 50 40 70 60 80 70H884z"/>
+      <path fill="url(#lit)" d="M884 118l-12 10-14 32-23 60-35 80-30 30-50 50-80 90h250l-2-90 6-100-9-90z"/>
+      <path fill="#fbe6d8" opacity=".85" d="M872 128l12-10 9 72-8 30-6-40-10 20-6-30z"/>
+      <path fill="#a4b3c7" opacity=".7" d="M896 124l6 18 16 48 20 28-22-12-14-30-8 10zM950 240l42 40 20 30-40-22z"/>
+      <path fill="#2f4865" d="M0 470l140-46 120 22 150-50 140 40 120-18 150 34 160-26 140 30 130-24 190 36v120H0z"/>
+      <path fill="url(#snow)" d="M0 500c180-34 380-30 560-12s420 30 600 6 220-24 280-18v84H0z"/>
+      <g fill="#14243a">
+        <use href="#pine" x="40" y="400" width="34" height="86"/><use href="#pine" x="78" y="420" width="26" height="68"/>
+        <use href="#pine" x="112" y="392" width="40" height="100"/><use href="#pine" x="160" y="430" width="22" height="58"/>
+        <use href="#pine" x="1250" y="404" width="34" height="86"/><use href="#pine" x="1292" y="388" width="42" height="104"/>
+        <use href="#pine" x="1342" y="420" width="26" height="70"/><use href="#pine" x="1378" y="398" width="36" height="92"/>
+      </g>
+    </svg>
     <p class="eyebrow">Zermatt · Switzerland</p>
-    <h1>Ski Trip 2027 — Who Sleeps Where</h1>
-    <p class="sub" id="trip-dates"></p>
+    <h1>Ski Trip 2027</h1>
+    <p class="lede">Who's coming, and who sleeps where</p>
+    <p class="hero-dates" id="trip-dates" hidden></p>
   </header>
+
+  <section class="summary" id="summary" aria-label="Trip summary"></section>
 
   <div class="syncbar no-print" id="syncbar">
     <span class="sync-dot" id="sync-dot">Connecting…</span>
-    <span class="who grow" id="sync-who"></span>
-    <button class="btn btn-sm" type="button" id="btn-whoami">Change name</button>
-    <button class="btn btn-sm" type="button" id="btn-refresh">Refresh</button>
-  </div>
-
-  <section class="card" aria-labelledby="dash-h">
-    <div class="card-head"><h2 id="dash-h">Dashboard</h2>
-      <span class="pill pill-neutral" id="capacity-pill">14 beds</span>
-    </div>
-    <div class="card-body">
-      <div class="stats" id="stats" role="group" aria-label="Trip statistics"></div>
-      <div class="meter" role="img" aria-label="Occupancy" id="meter-wrap"><span id="meter" style="width:0%"></span></div>
-    </div>
-  </section>
-
-  <div class="toolbar no-print">
-    <button class="btn btn-primary" type="button" id="btn-suggest">✨ Suggested Allocation</button>
-    <span class="spacer"></span>
-    <button class="btn" type="button" id="btn-print">Print / PDF</button>
+    <span class="who" id="sync-who"></span>
+    <button class="linkbtn" type="button" id="btn-whoami">Change name</button>
+    <button class="linkbtn" type="button" id="btn-refresh">Refresh</button>
   </div>
 
   <div class="alerts" id="alerts" role="status" aria-live="polite"></div>
 
+  <!-- Everyone, by name, at a glance. -->
+  <section class="section" aria-labelledby="group-h">
+    <div class="section-head">
+      <div>
+        <h2 id="group-h">The group</h2>
+        <p class="sub">Tap a name to change their status or remove them.</p>
+      </div>
+      <form class="invite no-print" id="invite-form" autocomplete="off">
+        <label class="sr-only" for="new-person">Name to invite</label>
+        <input class="input" id="new-person" type="text" placeholder="Invite someone — type a name" maxlength="40">
+        <button class="btn btn-primary" type="submit" id="btn-add-person"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Invite</button>
+      </form>
+    </div>
+    <div class="card">
+      <div class="board" id="group"></div>
+      <p class="board-note" id="group-note" hidden><span class="flag" aria-hidden="true"></span>Going but no bed yet</p>
+    </div>
+  </section>
+
   <div class="columns">
 
-    <section class="card" aria-labelledby="people-h">
-      <div class="card-head">
-        <h2 id="people-h">People</h2>
-        <span class="pill pill-neutral" id="people-count">0</span>
-      </div>
-
-      <div class="people-controls no-print">
-        <div class="field">
-          <label for="search">Search people</label>
-          <input class="input" id="search" type="search" placeholder="Type a name…" autocomplete="off">
+    <section class="section" aria-labelledby="rooms-h">
+      <div class="section-head">
+        <div>
+          <h2 id="rooms-h">Rooms</h2>
+          <p class="sub" id="rooms-sub"></p>
         </div>
-        <div class="tabs" role="tablist" aria-label="Filter people" id="tabs"></div>
-        <div class="field">
-          <label for="new-person">Add someone new</label>
-          <div class="add-person">
-            <input class="input" id="new-person" type="text" placeholder="Name" autocomplete="off" maxlength="40">
-            <button class="btn" type="button" id="btn-add-person">Add</button>
-          </div>
+        <div class="actions no-print">
+          <button class="btn btn-sm btn-primary" type="button" id="btn-suggest"><svg class="i" aria-hidden="true"><use href="#i-auto"/></svg>Allocate beds</button>
+          <button class="btn btn-sm" type="button" id="btn-add-room"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>Add room</button>
+          <button class="btn btn-sm btn-quiet" type="button" id="btn-print"><svg class="i" aria-hidden="true"><use href="#i-print"/></svg>Print</button>
         </div>
-      </div>
-
-      <ul class="people-list" id="people-list"></ul>
-    </section>
-
-    <section aria-labelledby="rooms-h">
-      <div class="rooms-head no-print">
-        <h2 id="rooms-h">Accommodation</h2>
-        <button class="btn btn-sm" type="button" id="btn-add-room">+ Add room</button>
       </div>
       <div class="rooms" id="rooms"></div>
+    </section>
+
+    <section class="section" aria-labelledby="people-h">
+      <div class="section-head">
+        <div>
+          <h2 id="people-h">People &amp; notes</h2>
+          <p class="sub" id="people-count"></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="people-tools no-print">
+          <div class="field">
+            <label for="search">Search</label>
+            <input class="input" id="search" type="search" placeholder="Name, or anything in a note" autocomplete="off">
+          </div>
+          <div class="tabs" role="tablist" aria-label="Filter people" id="tabs"></div>
+        </div>
+        <ul class="people-list" id="people-list"></ul>
+      </div>
     </section>
 
   </div>
 
   <details class="help no-print">
-    <summary>How to use this ⓘ</summary>
+    <summary>How it works</summary>
     <ol>
-      <li><strong>Add or remove people.</strong> Type a name under <em>Add someone new</em>. To remove someone, use <em>Delete</em> on their row.</li>
-      <li><strong>Confirm people.</strong> Tap the status button to mark someone as confirmed.</li>
-      <li><strong>Notes.</strong> Use the box under each name for flights or anything else. It saves automatically — you'll see <em>Saved ✓</em>.</li>
-      <li><strong>Assign beds.</strong> Use <em>Assign</em> on a person, or <em>+ Add</em> on an empty bed. Set a double room to <em>Couple</em> if two people share the bed.</li>
-      <li><strong>Shared.</strong> Everyone with the link sees the same plan, and changes show for everyone within a few seconds.</li>
-      <li><strong>Print.</strong> Print / PDF gives a clean copy of the plan.</li>
+      <li><strong>Invite.</strong> Type a name under <em>The group</em> and press <em>Invite</em>. They start as <em>Awaiting reply</em>.</li>
+      <li><strong>Going or not.</strong> Tap any name to mark them <em>Going</em>, <em>Awaiting reply</em> or <em>Not going</em>, or to remove them. Not going frees their bed.</li>
+      <li><strong>Beds.</strong> <em>Allocate beds</em> fills the rooms automatically, or use <em>Choose bed</em> on a person, or <em>+</em> on an empty bed.</li>
+      <li><strong>Notes.</strong> Each person has a notes box for flights or anything else. It saves automatically.</li>
+      <li><strong>Shared.</strong> Everyone with the link sees the same plan, updated within a few seconds.</li>
     </ol>
   </details>
+
+  <p class="foot" id="foot">Zermatt · Ski Trip 2027</p>
 
 </div>
 
@@ -641,7 +550,7 @@ input[type="file"]{font-size:13px;max-width:100%}
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
     <div class="modal-head">
       <h2 id="modal-title">Title</h2>
-      <button class="close-x" type="button" id="modal-close" aria-label="Close dialog">×</button>
+      <button class="close-x" type="button" id="modal-close" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-foot" id="modal-foot"></div>

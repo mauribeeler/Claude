@@ -1,7 +1,7 @@
 import {
   applyOp, initialState, getStats, validateState, syncAssignments,
   personById, roomById, slotById, assignmentLabel, roomCapacity, roomOccupancy,
-  ROOM_MODES, PlanError, clone
+  ROOM_MODES, PlanError, clone, statusOf
 } from "./plan-core.js";
 
 /* ===============================================================
@@ -208,10 +208,10 @@ window.addEventListener("focus", () => {
    =============================================================== */
 
 const el = {
-  stats: document.getElementById("stats"),
-  meter: document.getElementById("meter"),
-  meterWrap: document.getElementById("meter-wrap"),
-  capacityPill: document.getElementById("capacity-pill"),
+  summary: document.getElementById("summary"),
+  group: document.getElementById("group"),
+  groupNote: document.getElementById("group-note"),
+  roomsSub: document.getElementById("rooms-sub"),
   alerts: document.getElementById("alerts"),
   tabs: document.getElementById("tabs"),
   peopleList: document.getElementById("people-list"),
@@ -230,6 +230,21 @@ const el = {
   syncWho: document.getElementById("sync-who")
 };
 
+const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+function initials(name) {
+  const parts = String(name || "?").trim().split(/\s+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : String(name || "?").trim().slice(0, 2)).toUpperCase();
+}
+
+const STATUS_LABEL = { going: "Going", invited: "Awaiting reply", notGoing: "Not going" };
+const STATUS_CLASS = { going: "going", invited: "await", notGoing: "nogo" };
+
+/* Roster order, but people not going sink to the end. */
+function byStatusThenRoster(list) {
+  return [...list].sort((a, b) => (a.declined ? 1 : 0) - (b.declined ? 1 : 0));
+}
+
 function esc(str) {
   return String(str ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -242,17 +257,15 @@ function esc(str) {
 
 const FILTERS = [
   { key: "all", label: "All" },
-  { key: "confirmed", label: "Confirmed" },
-  { key: "notConfirmed", label: "Not confirmed" },
-  { key: "assigned", label: "Assigned" },
-  { key: "unassigned", label: "Unassigned" }
+  { key: "going", label: "Going" },
+  { key: "invited", label: "Awaiting reply" },
+  { key: "notGoing", label: "Not going" },
+  { key: "noBed", label: "No bed" }
 ];
 
 function matchesFilter(p, key) {
-  if (key === "confirmed") return p.confirmed;
-  if (key === "notConfirmed") return !p.confirmed;
-  if (key === "assigned") return !!p.assignment;
-  if (key === "unassigned") return !p.assignment;
+  if (key === "going" || key === "invited" || key === "notGoing") return statusOf(p) === key;
+  if (key === "noBed") return !p.declined && !p.assignment;
   return true;
 }
 
@@ -292,7 +305,7 @@ function renderDates() {
   const node = document.getElementById("trip-dates");
   if (!node) return;
   const text = formatDates(state);
-  node.textContent = text;
+  node.innerHTML = text ? `${icon("cal")}${esc(text)}` : "";
   node.hidden = !text;
 }
 
@@ -326,21 +339,43 @@ function renderSyncBar() {
   el.syncWho.innerHTML = bits.join(" · ");
 }
 
-function renderStats(stats) {
-  const cells = [
-    { k: "People invited", v: stats.total, cls: "" },
-    { k: "Confirmed", v: stats.confirmed, cls: stats.confirmed ? "is-ok" : "" },
-    { k: "Beds taken", v: stats.occupied, cls: "" },
-    { k: "Beds available", v: stats.spacesRemaining, cls: stats.spacesRemaining === 0 ? "is-pend" : "is-ok" }
-  ];
-  el.stats.innerHTML = cells.map((c) =>
-    `<div class="stat ${c.cls}"><span class="k">${esc(c.k)}</span><span class="v">${esc(c.v)}</span></div>`
-  ).join("");
+function renderSummary(stats) {
+  const pct = stats.beds ? Math.min(100, Math.round((stats.occupied / stats.beds) * 100)) : 0;
+  el.summary.innerHTML = `
+    <div class="fig going"><div class="num">${stats.going}</div><div class="lab">Going</div></div>
+    <div class="fig await"><div class="num">${stats.invited}</div><div class="lab">Awaiting reply</div></div>
+    <div class="fig nogo"><div class="num">${stats.notGoing}</div><div class="lab">Not going</div></div>
+    <div class="fig beds">
+      <div class="num">${stats.spacesRemaining}<small>of ${stats.beds} free</small></div>
+      <div class="lab">Beds</div>
+      <div class="bar" role="img" aria-label="${stats.occupied} of ${stats.beds} beds taken"><span style="width:${pct}%"></span></div>
+    </div>`;
+  el.roomsSub.textContent = `${stats.occupied} of ${stats.beds} beds taken · ${stats.spacesRemaining} free`;
+}
 
-  el.meter.style.width = `${Math.min(100, stats.occupancyPct)}%`;
-  el.meter.style.background = stats.occupancyPct >= 100 ? "var(--ok)" : (stats.occupancyPct > 0 ? "var(--accent)" : "transparent");
-  el.meterWrap.setAttribute("aria-label", `Occupancy ${stats.occupancyPct} percent — ${stats.occupied} of ${stats.beds} beds filled`);
-  el.capacityPill.textContent = `${stats.occupied} / ${stats.beds} beds filled`;
+/* Everyone, by name, in three columns. Tapping a name opens the status sheet. */
+function renderGroup() {
+  const cols = [
+    { key: "going", cls: "going", title: "Going" },
+    { key: "invited", cls: "await", title: "Awaiting reply" },
+    { key: "notGoing", cls: "nogo", title: "Not going" }
+  ];
+  let anyFlag = false;
+  el.group.innerHTML = cols.map((c) => {
+    const people = state.people.filter((p) => statusOf(p) === c.key);
+    const names = people.map((p) => {
+      const needsBed = c.key === "going" && !p.assignment;
+      if (needsBed) anyFlag = true;
+      return `<button class="name" type="button" data-action="status" data-person="${esc(p.id)}"
+        aria-label="${esc(p.name)} — ${STATUS_LABEL[c.key]}${needsBed ? ", no bed yet" : ""}. Change status">
+        <span class="ini" aria-hidden="true">${esc(initials(p.name))}</span>${esc(p.name)}${needsBed ? '<span class="flag" aria-hidden="true"></span>' : ""}</button>`;
+    }).join("");
+    return `<div class="col ${c.cls}">
+      <div class="col-head"><span class="col-title">${c.title}</span><span class="col-count">${people.length}</span></div>
+      <div class="names">${names || '<span class="col-empty">No one yet</span>'}</div>
+    </div>`;
+  }).join("");
+  el.groupNote.hidden = !anyFlag;
 }
 
 function renderAlerts(issues) {
@@ -358,13 +393,7 @@ function renderAlerts(issues) {
 }
 
 function renderTabs() {
-  const counts = {
-    all: state.people.length,
-    confirmed: state.people.filter((p) => p.confirmed).length,
-    notConfirmed: state.people.filter((p) => !p.confirmed).length,
-    assigned: state.people.filter((p) => !!p.assignment).length,
-    unassigned: state.people.filter((p) => !p.assignment).length
-  };
+  const counts = Object.fromEntries(FILTERS.map((f) => [f.key, state.people.filter((p) => matchesFilter(p, f.key)).length]));
   el.tabs.innerHTML = FILTERS.map((f) => {
     const on = ui.filter === f.key;
     return `<button class="tab" type="button" role="tab" aria-selected="${on}" data-action="filter" data-filter="${f.key}">${esc(f.label)} <span class="n">${counts[f.key]}</span></button>`;
@@ -372,10 +401,10 @@ function renderTabs() {
 }
 
 function renderPeople() {
-  const list = visiblePeople();
+  const list = byStatusThenRoster(visiblePeople());
   el.peopleCount.textContent = list.length === state.people.length
-    ? `${state.people.length} on the trip`
-    : `${list.length} of ${state.people.length}`;
+    ? `${state.people.length} invited`
+    : `Showing ${list.length} of ${state.people.length}`;
 
   if (!list.length) {
     el.peopleList.innerHTML = '<li class="empty">No one matches that filter.</li>';
@@ -383,38 +412,48 @@ function renderPeople() {
   }
 
   el.peopleList.innerHTML = list.map((p) => {
+    const id = esc(p.id);
+    const st = statusOf(p);
+    const nogo = st === "notGoing";
     const where = assignmentLabel(state, p);
-    const flag = p.confirmed && !p.assignment;
+    const draft = noteDrafts.get(p.id);
 
-    const pairOptions = ['<option value="">— nobody —</option>'].concat(
-      state.people.filter((o) => o.id !== p.id).map((o) =>
+    const pairOptions = ['<option value="">Nobody</option>'].concat(
+      state.people.filter((o) => o.id !== p.id && !o.declined).map((o) =>
         `<option value="${esc(o.id)}"${p.pairWith === o.id ? " selected" : ""}>${esc(o.name)}</option>`)
     ).join("");
 
-    return `<li class="person${flag ? " flag" : ""}" data-person="${esc(p.id)}">
+    const bedLine = nogo
+      ? `<div class="person-where">Not going</div>`
+      : `<div class="person-where${where ? "" : " none"}">${icon("bed")}${where ? esc(where) : "No bed yet"}${p.pinned && where ? '<span class="pill pill-ok">Booked</span>' : ""}</div>`;
+
+    const bedActions = nogo ? "" : `
+        <div class="act">
+          <button class="btn btn-sm" type="button" data-action="assign" data-person="${id}">${icon("move")}${p.assignment ? "Move bed" : "Choose bed"}</button>
+          ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${id}">${icon("out")}Remove from bed</button>` : ""}
+          ${p.assignment ? `<button class="btn btn-sm${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${id}" aria-pressed="${!!p.pinned}" title="${p.pinned ? "Booked — Allocate beds leaves this bed alone" : "Mark this bed as already booked"}">${icon("pin")}${p.pinned ? "Booked" : "Pin"}</button>` : ""}
+        </div>`;
+
+    return `<li class="person${nogo ? " is-nogo" : ""}" data-person="${id}">
       <div class="person-top">
+        <span class="ini-lg" aria-hidden="true">${esc(initials(p.name))}</span>
         <div class="person-id">
           <div class="person-name">${esc(p.name)}</div>
-          <div class="person-where${where ? "" : " none"}">${where ? esc(where) : "No bed assigned"}${p.pinned && where ? ' <span class="pill pill-ok">Booked</span>' : ""}</div>
+          ${bedLine}
         </div>
-        <button class="toggle" type="button" data-action="toggle-confirm" data-person="${esc(p.id)}" aria-pressed="${p.confirmed}">
-          <span class="dot" aria-hidden="true"></span>${p.confirmed ? "Confirmed" : "Not confirmed"}
-        </button>
-      </div>
-      <div class="person-actions no-print">
-        <button class="btn btn-sm" type="button" data-action="assign" data-person="${esc(p.id)}">${p.assignment ? "Move" : "Assign"}</button>
-        ${p.assignment ? `<button class="btn btn-sm" type="button" data-action="unassign" data-person="${esc(p.id)}">Remove from bed</button>` : ""}
-        ${p.assignment ? `<button class="btn btn-sm${p.pinned ? " btn-pinned" : ""}" type="button" data-action="toggle-pin" data-person="${esc(p.id)}" aria-pressed="${!!p.pinned}" title="${p.pinned ? "Booked — allocation leaves this bed alone" : "Pin this bed as already booked"}">${p.pinned ? "📌 Booked" : "Pin as booked"}</button>` : ""}
-        <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${esc(p.id)}">Delete</button>
-        <span class="pair-row">
-          <label for="pair_${esc(p.id)}">Shares bed with</label>
-          <select id="pair_${esc(p.id)}" data-action="pair" data-person="${esc(p.id)}" aria-label="Bed-sharing partner for ${esc(p.name)}">${pairOptions}</select>
-        </span>
+        <button class="status ${STATUS_CLASS[st]}" type="button" data-action="status" data-person="${id}" aria-label="${esc(p.name)}: ${STATUS_LABEL[st]}. Change status">${STATUS_LABEL[st]}</button>
       </div>
       <div class="person-note">
-        <label class="sr-only" for="note_${esc(p.id)}">Note for ${esc(p.name)}</label>
-        <textarea class="note-input" id="note_${esc(p.id)}" rows="1" maxlength="500" placeholder="Notes (flights, arrival time…)" data-action="note" data-person="${esc(p.id)}">${esc(noteDrafts.has(p.id) ? noteDrafts.get(p.id).value : p.note)}</textarea>
-        <span class="note-status${noteDrafts.get(p.id)?.state === "saved" ? " saved" : ""}${noteDrafts.get(p.id)?.state === "error" ? " err" : ""}" id="ns_${esc(p.id)}" aria-live="polite">${esc(noteStatusText(noteDrafts.get(p.id)?.state))}</span>
+        <label class="sr-only" for="note_${id}">Notes for ${esc(p.name)}</label>
+        <textarea class="note-input" id="note_${id}" rows="1" maxlength="500" placeholder="Notes — flights, arrival time" data-action="note" data-person="${id}">${esc(draft ? draft.value : p.note)}</textarea>
+        <span class="note-status${draft?.state === "saved" ? " saved" : ""}${draft?.state === "error" ? " err" : ""}" id="ns_${id}" aria-live="polite">${esc(noteStatusText(draft?.state))}</span>
+      </div>
+      <div class="person-actions no-print">${bedActions}
+        <div class="act act-side">
+          ${nogo ? "" : `<span class="pair-row"><label for="pair_${id}">Shares bed with</label>
+            <select id="pair_${id}" data-action="pair" data-person="${id}" aria-label="Bed-sharing partner for ${esc(p.name)}">${pairOptions}</select></span>`}
+          <button class="btn btn-sm btn-danger" type="button" data-action="delete-person" data-person="${id}" aria-label="Delete ${esc(p.name)}">${icon("trash")}Delete</button>
+        </div>
       </div>
     </li>`;
   }).join("");
@@ -447,17 +486,17 @@ function renderRooms(issues) {
         ? slot.occupants.map((pid) => {
             const p = personById(state, pid);
             const nm = p ? p.name : "Unknown";
-            return `<span class="chip${p && !p.confirmed ? " unconf" : ""}">
+            return `<span class="chip${p && !p.confirmed ? " unconf" : ""}" title="${p && !p.confirmed ? `${esc(nm)} — awaiting reply` : esc(nm)}">
               <span class="nm">${esc(nm)}</span>
-              <button class="x no-print" type="button" data-action="unassign" data-person="${esc(pid)}" aria-label="Remove ${esc(nm)} from ${esc(slot.label)}">×</button>
+              <button class="x no-print" type="button" data-action="unassign" data-person="${esc(pid)}" aria-label="Remove ${esc(nm)} from ${esc(slot.label)}">${icon("x")}</button>
             </span>`;
           }).join("")
         : '<span class="slot-empty">Empty</span>';
 
       return `<li class="slot${filled ? " filled" : ""}${over ? " over" : ""}">
         <div class="slot-top">
-          <span class="slot-label">${esc(slot.label)} <span class="kind">· ${slot.type === "sharedDouble" ? "shares, max 2" : "1 person"}</span></span>
-          <button class="btn btn-sm no-print" type="button" data-action="fill-slot" data-room="${esc(room.id)}" data-slot="${esc(slot.id)}"${canAdd ? "" : " disabled"}>+ Add</button>
+          <span class="slot-label">${icon("bed")}${esc(slot.label)}${slot.type === "sharedDouble" ? " · sleeps 2" : ""}</span>
+          <button class="slot-add no-print" type="button" data-action="fill-slot" data-room="${esc(room.id)}" data-slot="${esc(slot.id)}"${canAdd ? "" : " disabled"} aria-label="Put someone in ${esc(room.name)}, ${esc(slot.label)}" title="Put someone here">${icon("plus")}</button>
         </div>
         <div class="occupants">${chips}</div>
       </li>`;
@@ -465,16 +504,16 @@ function renderRooms(issues) {
 
     const statusPill = occ > cap
       ? '<span class="pill pill-err">Over capacity</span>'
-      : (occ === cap ? '<span class="pill pill-ok">Full</span>' : `<span class="pill pill-neutral">${free} space${free === 1 ? "" : "s"} left</span>`);
+      : (occ === cap ? '<span class="pill pill-ok">Full</span>' : `<span>${free} free</span>`);
 
     return `<article class="room${roomIssues.length ? " invalid" : ""}" aria-labelledby="rt_${esc(room.id)}">
       <div class="room-head">
         <div class="room-title-row">
           <h3 class="room-title" id="rt_${esc(room.id)}">${esc(room.name)}</h3>
-          <div class="room-meta">${room.autoFill === false ? '<span class="pill pill-neutral" title="Suggested Allocation never fills this room">Booked separately</span>' : ""}<span class="pill pill-neutral">${occ} / ${cap}</span>${statusPill}</div>
-        </div>${modeHtml}
+          <div class="room-meta">${room.autoFill === false ? '<span class="pill pill-neutral" title="Allocate beds never fills this room">Booked separately</span>' : ""}<span class="cap">${occ} of ${cap}</span>${statusPill}</div>
+        </div>
+        <div class="room-tools no-print">${modeHtml}<button class="btn btn-sm btn-quiet" type="button" data-action="edit-room" data-room="${esc(room.id)}">${icon("pen")}Edit room</button></div>
       </div>
-      <div class="room-mode no-print"><button class="btn btn-sm" type="button" data-action="edit-room" data-room="${esc(room.id)}">Edit room</button></div>
       ${roomIssues.length ? `<p class="room-warn">⚠ ${esc(roomIssues[0].text)}</p>` : ""}
       <ul class="slots">${slotsHtml}</ul>
     </article>`;
@@ -512,7 +551,7 @@ function render() {
 
   renderSyncBar();
   renderDates();
-  renderStats(stats);
+  renderSummary(stats);
   renderAlerts(issues);
 
   /*
@@ -530,6 +569,7 @@ function render() {
    * list as soon as they leave the box.
    */
   if (typingNote()) {
+    renderGroup();
     renderTabs();
     renderRooms(issues);
     return;            // lastRenderedSignature left stale on purpose
@@ -537,6 +577,7 @@ function render() {
 
   lastRenderedSignature = signature;
   withPreservedFocus(() => {
+    renderGroup();
     renderTabs();
     renderPeople();
     renderRooms(issues);
@@ -703,6 +744,45 @@ function askPasscode(required) {
    7. PICKERS
    =============================================================== */
 
+/* Going / awaiting reply / not going, plus delete — one tap from any name. */
+function openStatusSheet(personId) {
+  const p = personById(state, personId);
+  if (!p) return;
+  const current = statusOf(p);
+  const options = [
+    { key: "going", cls: "opt-going", label: "Going", desc: "Confirmed — needs a bed." },
+    { key: "invited", cls: "opt-await", label: "Awaiting reply", desc: "Invited, hasn't answered yet." },
+    { key: "notGoing", cls: "opt-nogo", label: "Not going", desc: p.assignment ? "Frees their bed." : "Won't need a bed." }
+  ];
+  openModal({
+    title: p.name,
+    bodyHtml: `<div class="pick-group" role="group" aria-label="Status for ${esc(p.name)}">${options.map((o) => `
+      <button class="pick ${o.cls}${o.key === current ? " current" : ""}" type="button" data-pick="${o.key}" aria-pressed="${o.key === current}">
+        <span class="lead"><span class="opt-dot" aria-hidden="true"></span><span><span class="nm">${o.label}</span><span class="opt-desc">${esc(o.desc)}</span></span></span>
+        <span class="meta">${o.key === current ? "Current" : ""}</span>
+      </button>`).join("")}</div>`,
+    buttons: [
+      { label: "Delete from the trip", variant: "btn-danger", onClick: () => confirmDelete(personId) },
+      { label: "Close", onClick: closeModal }
+    ],
+    onPick: (status) => {
+      closeModal();
+      if (status !== current) dispatch({ type: "setStatus", params: { personId, status } });
+    }
+  });
+}
+
+function confirmDelete(personId) {
+  const dp = personById(state, personId);
+  if (!dp) return;
+  confirmDialog(
+    `Delete ${dp.name}?`,
+    `${dp.name} will be removed from the trip and from any bed${syncMode === "shared" ? ", for everyone" : ""}. This can't be undone.`,
+    "Delete",
+    () => dispatch({ type: "deletePerson", params: { personId } })
+  );
+}
+
 function openAssignPicker(personId) {
   const person = personById(state, personId);
   if (!person) return;
@@ -752,20 +832,19 @@ function openSlotPicker(roomId, slotId) {
   const row = (p) => {
     const where = assignmentLabel(state, p);
     return `<button class="pick" type="button" data-pick="${esc(p.id)}">
-      <span class="lead"><span class="nm">${esc(p.name)}</span>
-      <span class="pill ${p.confirmed ? "pill-ok" : "pill-pend"}">${p.confirmed ? "Confirmed" : "Pending"}</span></span>
+      <span class="lead"><span class="nm">${esc(p.name)}</span></span>
       <span class="meta">${esc(where ? `Move from ${where.split(" (with")[0]}` : "No bed yet")}</span>
     </button>`;
   };
 
-  const free = state.people.filter((p) => !p.assignment);
+  const free = state.people.filter((p) => !p.assignment && !p.declined);
   const placed = state.people.filter((p) => p.assignment && !slot.occupants.includes(p.id));
   const freeConf = free.filter((p) => p.confirmed);
   const freePend = free.filter((p) => !p.confirmed);
 
   let html = "";
-  if (freeConf.length) html += `<div class="pick-group"><h3>Confirmed, no bed yet</h3>${freeConf.map(row).join("")}</div>`;
-  if (freePend.length) html += `<div class="pick-group"><h3>Not confirmed</h3>${freePend.map(row).join("")}</div>`;
+  if (freeConf.length) html += `<div class="pick-group"><h3>Going, no bed yet</h3>${freeConf.map(row).join("")}</div>`;
+  if (freePend.length) html += `<div class="pick-group"><h3>Awaiting reply</h3>${freePend.map(row).join("")}</div>`;
   if (placed.length) html += `<div class="pick-group"><h3>Already in another bed — move them</h3>${placed.map(row).join("")}</div>`;
   if (!html) html = '<p class="modal-note">Everyone is already in this bed or there is no one left to place.</p>';
 
@@ -882,12 +961,7 @@ document.addEventListener("click", (ev) => {
     render();
     return;
   }
-  if (action === "toggle-confirm") {
-    const p = personById(state, personId);
-    if (!p) return;
-    dispatch({ type: "setConfirmed", params: { personId, confirmed: !p.confirmed } });
-    return;
-  }
+  if (action === "status") { openStatusSheet(personId); return; }
   if (action === "toggle-pin") {
     const p = personById(state, personId);
     if (!p) return;
@@ -898,16 +972,7 @@ document.addEventListener("click", (ev) => {
   if (action === "assign") { openAssignPicker(personId); return; }
   if (action === "unassign") { dispatch({ type: "unassign", params: { personId } }); return; }
   if (action === "fill-slot") { openSlotPicker(roomId, slotId); return; }
-  if (action === "delete-person") {
-    const dp = personById(state, personId);
-    if (!dp) return;
-    confirmDialog(
-      `Remove ${dp.name}?`,
-      `${dp.name} will be taken off the trip list and out of any bed${syncMode === "shared" ? ", for everyone" : ""}. This cannot be undone.`,
-      "Remove",
-      () => dispatch({ type: "deletePerson", params: { personId } })
-    );
-  }
+  if (action === "delete-person") confirmDelete(personId);
 });
 
 /*
@@ -1026,23 +1091,23 @@ el.search.addEventListener("input", () => {
   render();
 });
 
-function addPersonFromInput() {
+document.getElementById("invite-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
   const name = el.newPerson.value.trim();
   if (!name) { el.newPerson.focus(); return; }
+  if (state.people.some((p) => p.name.trim().toLowerCase() === name.toLowerCase())) {
+    toast(`${name} is already on the list.`);
+    return;
+  }
   el.newPerson.value = "";
   dispatch({ type: "addPerson", params: { name } }, { optimistic: false });
   el.newPerson.focus();
-}
-
-document.getElementById("btn-add-person").addEventListener("click", addPersonFromInput);
-el.newPerson.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); addPersonFromInput(); }
 });
 
 document.getElementById("btn-suggest").addEventListener("click", () => {
   confirmDialog(
-    "Run suggested allocation?",
-    `This clears every current bed assignment${syncMode === "shared" ? " for everyone" : ""} and rebuilds the plan: confirmed people first, bed-sharing pairs into the double rooms, then the family room, then the dormitory.`,
+    "Allocate beds?",
+    `This replaces the current bed plan${syncMode === "shared" ? " for everyone" : ""}. People going are placed first, then those awaiting a reply. Couples get a double bed. Booked beds are kept, and people not going are left out.`,
     "Allocate",
     () => dispatch({ type: "suggest", params: {} }, { optimistic: false })
   );
